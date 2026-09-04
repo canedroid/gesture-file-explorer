@@ -82,3 +82,32 @@ def test_hud_scroll_offsets_rendered_slice():
         scroll_offset=1,
     )
     assert idx is None or idx >= 0
+
+
+def test_hud_render_text_without_error():
+    frame = np.zeros((FRAME_H, FRAME_W, 3), dtype=np.uint8)
+    hud = HUD()
+    lines = ["# Heading", "", "some body text", "- bullet"]
+    hud.render_text(frame, "FILE VIEW", "notes.md", lines, scroll_line=0)
+
+    cursor = FakeCursor(500, hud.list_top + hud.row_height // 2)
+    hover, wrapped = hud.render_text(
+        frame,
+        "FILE VIEW",
+        "notes.md",
+        lines,
+        scroll_line=0,
+        cursor=cursor,
+    )
+    assert hover == 0
+    assert wrapped >= len(lines)
+
+
+def test_hud_wrap_lines_splits_long_lines():
+    hud = HUD()
+    long_line = "word " * 200
+    wrapped = hud.wrap_lines([long_line], frame_w=FRAME_W)
+    assert len(wrapped) > 1
+    assert "".join(wrapped).replace(" ", "") == long_line.strip().replace(
+        " ", ""
+    )

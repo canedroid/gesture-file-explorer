@@ -2,17 +2,11 @@
 
 import cv2
 
+from app import ExplorerApp, ViewState
 from camera import Camera
-from file_engine import FileEntry, get_drives
 from gesture_control import Cursor
 from hand_tracker import HandTracker
 from ui_overlay import HUD
-
-
-def root_entries():
-    return [
-        FileEntry(name=drive, path=drive, is_dir=True) for drive in get_drives()
-    ]
 
 
 def main():
@@ -20,7 +14,7 @@ def main():
     tracker = HandTracker()
     cursor = Cursor()
     hud = HUD()
-    entries = root_entries()
+    app = ExplorerApp()
 
     window_name = "Gesture File Explorer"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
@@ -45,13 +39,45 @@ def main():
             landmarks = tracker.get_landmarks(results)
             cursor.update(landmarks, width, height)
 
-            hud.render(
-                frame,
-                "GESTURE FILE EXPLORER",
-                "This PC",
-                entries,
-                cursor=cursor,
-            )
+            if cursor.pinch_started:
+                hover = hud.hovered_index(cursor, width, height)
+                if hover is not None:
+                    if app.is_file_view:
+                        app.activate_index(hover)
+                    else:
+                        app.activate_index(app.scroll_offset + hover)
+
+            if app.is_file_view:
+                hud.render_text(
+                    frame,
+                    "FILE VIEW",
+                    app.directory_label,
+                    app.lines,
+                    scroll_line=app.scroll_offset,
+                    cursor=cursor,
+                )
+            else:
+                hud.render(
+                    frame,
+                    "GESTURE FILE EXPLORER",
+                    app.directory_label,
+                    app.entries,
+                    cursor=cursor,
+                    scroll_offset=app.scroll_offset,
+                )
+
+            if app.error_message:
+                cv2.putText(
+                    frame,
+                    "ERR: " + app.error_message[:70],
+                    (20, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 0, 255),
+                    1,
+                    cv2.LINE_AA,
+                )
+
             cursor.draw(frame)
 
             cv2.imshow(window_name, frame)

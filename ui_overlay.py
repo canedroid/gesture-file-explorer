@@ -20,6 +20,8 @@ HOVER_ALPHA = 0.6
 class HUD:
     """Semi-transparent heads-up display laid out on the camera frame."""
 
+    default_width = 960
+
     def __init__(
         self,
         panel_alpha=PANEL_ALPHA,
@@ -124,6 +126,42 @@ class HUD:
             cv2.LINE_AA,
         )
 
+    def _draw_header(self, frame, title, path_label, suffix=None):
+        cv2.putText(
+            frame,
+            title,
+            (self.panel_x + 22, self.title_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            HEADER_COLOR,
+            2,
+            cv2.LINE_AA,
+        )
+        if len(path_label) > 60:
+            path_label = "..." + path_label[-57:]
+        cv2.putText(
+            frame,
+            path_label,
+            (self.panel_x + 22, self.path_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            TEXT_DIM,
+            1,
+            cv2.LINE_AA,
+        )
+
+        if suffix:
+            cv2.putText(
+                frame,
+                suffix,
+                (self.panel_x + self.panel_w - 210, self.path_y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                ACCENT_BRIGHT,
+                1,
+                cv2.LINE_AA,
+            )
+
     def render(
         self,
         frame,
@@ -146,42 +184,9 @@ class HUD:
                 clamped_hover = self.hover_index
 
         self._draw_panel(frame)
-
-        cv2.putText(
-            frame,
-            title,
-            (self.panel_x + 22, self.title_y),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            HEADER_COLOR,
-            2,
-            cv2.LINE_AA,
+        self._draw_header(
+            frame, title, directory_label or "[ ROOT ]", item_suffix
         )
-        path_label = directory_label if directory_label else "[ ROOT ]"
-        if len(path_label) > 60:
-            path_label = "..." + path_label[-57:]
-        cv2.putText(
-            frame,
-            path_label,
-            (self.panel_x + 22, self.path_y),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            TEXT_DIM,
-            1,
-            cv2.LINE_AA,
-        )
-
-        if item_suffix:
-            cv2.putText(
-                frame,
-                item_suffix,
-                (self.panel_x + self.panel_w - 190, self.path_y),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                ACCENT_BRIGHT,
-                1,
-                cv2.LINE_AA,
-            )
 
         start = scroll_offset
         end = min(len(entries), start + self.visible_rows)
@@ -205,3 +210,139 @@ class HUD:
             )
 
         return self.hover_index
+
+    @staticmethod
+    def _wrap_text_line(text, max_px, font, scale, thickness):
+        width, _ = cv2.getTextSize(text, font, scale, thickness)[0]
+        if width <= max_px:
+            return [text]
+        lines = []
+        current = ""
+        for word in text.split(" "):
+            trial = f"{current} {word}".strip()
+            tw = cv2.getTextSize(trial, font, scale, thickness)[0][0]
+            if tw <= max_px:
+                current = trial
+            else:
+                if current:
+                    lines.append(current)
+                word_w = cv2.getTextSize(word, font, scale, thickness)[0][0]
+                if word_w <= max_px:
+                    current = word
+                else:
+                    chunk = ""
+                    for char in word:
+                        if (
+                            cv2.getTextSize(
+                                chunk + char, font, scale, thickness
+                            )[0][0]
+                            > max_px
+                        ):
+                            lines.append(chunk)
+                            chunk = char
+                        else:
+                            chunk += char
+                    current = chunk
+        if current:
+            lines.append(current)
+        return lines
+
+    def wrap_lines(self, lines, frame_w=None):
+        """Return the list of lines wrapped to fit the HUD panel width."""
+        if frame_w is None:
+            frame_w = self.panel_w or self.default_width
+        max_px = frame_w - 2 * self.margin_x - 60
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        wrapped = []
+        for raw_line in lines:
+            wrapped.extend(
+                self._wrap_text_line(raw_line, max_px, font, 0.5, 1)
+            )
+        return wrapped
+
+    def render_text(
+        self,
+        frame,
+        title,
+        directory_label,
+        lines,
+        scroll_line=0,
+        cursor=None,
+        file_total=None,
+    ):
+        """Render a text/markdown document inside the HUD panel.
+
+        Returns ``(hover_index, wrapped_line_count)``.
+        """
+        frame_h, frame_w = frame.shape[:2]
+        self._layout(frame_w, frame_h)
+        wrapped = self.wrap_lines(lines, frame_w)
+
+        self.hover_index = self.hovered_index(cursor, frame_w, frame_h)
+        hover_back = self.hover_index == 0
+
+        self._draw_panel(frame)
+        self._draw_header(
+            frame,
+            title,
+            directory_label or "[ FILE VIEW ]",
+            None,
+        )
+        self._draw_row(
+            frame,
+            "<-- BACK",
+            True,
+            (
+                self.panel_x + 8,
+                self.list_top,
+                self.panel_x + self.panel_w - 8,
+                self.list_top + self.row_height - 4,
+            ),
+            hover_back,
+        )
+
+        line_top = self.list_top + self.row_height
+        available_h = self.panel_y + self.panel_h - line_top - 24
+        text_rows = max(1, available_h // (self.row_height - 16))
+        start = scroll_line
+        end = min(len(wrapped), start + text_rows)
+        font = cv2.FONT_HERSHEY_SIMPLEX
+
+        for i, line in enumerate(wrapped[start:end]):
+            y = line_top + 28 + i * (self.row_height - 16)
+            if y > self.panel_y + self.panel_h - 30:
+                break
+            color = FILE_COLOR
+            stripped = line.lstrip()
+            if stripped.startswith("#"):
+                color = HEADER_COLOR
+            elif stripped.startswith(("-", "*", "+", ">")) or stripped.startswith(
+                ("1.", "2.", "3.")
+            ):
+                color = ACCENT
+            elif not stripped:
+                continue
+            cv2.putText(
+                frame,
+                line,
+                (self.panel_x + 22, y),
+                font,
+                0.5,
+                color,
+                1,
+                cv2.LINE_AA,
+            )
+
+        total = file_total if file_total is not None else len(wrapped)
+        status = f"LN {min(start+1, total)}-{min(end, total)} / {total}"
+        cv2.putText(
+            frame,
+            status,
+            (self.panel_x + 22, self.panel_y + self.panel_h - 12),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            TEXT_DIM,
+            1,
+            cv2.LINE_AA,
+        )
+        return self.hover_index, len(wrapped)
