@@ -3,14 +3,24 @@
 import cv2
 
 from camera import Camera
+from file_engine import FileEntry, get_drives
 from gesture_control import Cursor
 from hand_tracker import HandTracker
+from ui_overlay import HUD
+
+
+def root_entries():
+    return [
+        FileEntry(name=drive, path=drive, is_dir=True) for drive in get_drives()
+    ]
 
 
 def main():
     camera = Camera()
     tracker = HandTracker()
     cursor = Cursor()
+    hud = HUD()
+    entries = root_entries()
 
     window_name = "Gesture File Explorer"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
@@ -34,6 +44,14 @@ def main():
             height, width = frame.shape[:2]
             landmarks = tracker.get_landmarks(results)
             cursor.update(landmarks, width, height)
+
+            hud.render(
+                frame,
+                "GESTURE FILE EXPLORER",
+                "This PC",
+                entries,
+                cursor=cursor,
+            )
             cursor.draw(frame)
 
             cv2.imshow(window_name, frame)

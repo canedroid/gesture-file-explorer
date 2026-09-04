@@ -1,0 +1,207 @@
+"""Sci-fi AR HUD overlay rendered directly on the camera frame."""
+
+import cv2
+import numpy as np
+
+ACCENT = (255, 180, 0)          # BGR amber
+ACCENT_BRIGHT = (255, 230, 120)
+HEADER_COLOR = (240, 220, 140)
+DIR_COLOR = (255, 210, 90)      # amber for folders
+FILE_COLOR = (130, 230, 255)    # cyan for files
+HOVER_BG = (40, 70, 120)
+HOVER_BORDER = (255, 180, 0)
+PANEL_BG = (12, 18, 38)
+TEXT_DIM = (170, 180, 200)
+
+PANEL_ALPHA = 0.45
+HOVER_ALPHA = 0.6
+
+
+class HUD:
+    """Semi-transparent heads-up display laid out on the camera frame."""
+
+    def __init__(
+        self,
+        panel_alpha=PANEL_ALPHA,
+        margin_x=40,
+        margin_top=80,
+        margin_bottom=70,
+        row_height=34,
+    ):
+        self.panel_alpha = panel_alpha
+        self.margin_x = margin_x
+        self.margin_top = margin_top
+        self.margin_bottom = margin_bottom
+        self.row_height = row_height
+
+        self.panel_x = 0
+        self.panel_y = 0
+        self.panel_w = 0
+        self.panel_h = 0
+        self.title_y = 0
+        self.path_y = 0
+        self.list_top = 0
+        self.visible_rows = 0
+        self.hover_index = None
+
+    def _layout(self, frame_w, frame_h):
+        self.panel_x = self.margin_x
+        self.panel_y = self.margin_top
+        self.panel_w = frame_w - 2 * self.margin_x
+        self.panel_h = frame_h - self.margin_top - self.margin_bottom
+        self.title_y = self.panel_y + 34
+        self.path_y = self.panel_y + 62
+        self.list_top = self.panel_y + 92
+        self.visible_rows = max(
+            0, (self.panel_h - 100) // self.row_height
+        )
+
+    def hovered_index(self, cursor, frame_w, frame_h):
+        """Return the list row under the virtual cursor, or None."""
+        self._layout(frame_w, frame_h)
+        if cursor is None or not cursor.visible:
+            return None
+        index = int((cursor.y - self.list_top) // self.row_height)
+        if index < 0:
+            return None
+        in_panel = (
+            self.panel_x <= cursor.x <= self.panel_x + self.panel_w
+        )
+        if not in_panel:
+            return None
+        return index
+
+    def _draw_panel(self, frame):
+        x0, y0 = self.panel_x, self.panel_y
+        x1, y1 = x0 + self.panel_w, y0 + self.panel_h
+        roi = frame[y0:y1, x0:x1]
+        overlay = np.full_like(roi, PANEL_BG, dtype=np.uint8)
+        blended = cv2.addWeighted(
+            overlay, self.panel_alpha, roi, 1.0 - self.panel_alpha, 0
+        )
+        frame[y0:y1, x0:x1] = blended
+
+        cv2.rectangle(frame, (x0, y0), (x1, y1), ACCENT, 1)
+        corner = 22
+        for cx, cy, dir_x, dir_y in (
+            (x0, y0, 1, 1),
+            (x1, y0, -1, 1),
+            (x0, y1, 1, -1),
+            (x1, y1, -1, -1),
+        ):
+            cv2.line(frame, (cx, cy), (cx + corner * dir_x, cy), ACCENT_BRIGHT, 2)
+            cv2.line(frame, (cx, cy), (cx, cy + corner * dir_y), ACCENT_BRIGHT, 2)
+
+        line_y = y0 + 74
+        cv2.line(frame, (x0, line_y), (x1, line_y), ACCENT, 1)
+
+    def _draw_row(self, frame, name, is_dir, row_rect, hovered):
+        x0, y0, x1, y1 = row_rect
+        if hovered:
+            roi = frame[y0:y1, x0:x1]
+            overlay = np.full_like(roi, HOVER_BG, dtype=np.uint8)
+            blended = cv2.addWeighted(
+                overlay, HOVER_ALPHA, roi, 1.0 - HOVER_ALPHA, 0
+            )
+            frame[y0:y1, x0:x1] = blended
+            cv2.rectangle(frame, (x0, y0), (x1, y1), HOVER_BORDER, 1)
+
+        color = DIR_COLOR if is_dir else FILE_COLOR
+        marker = ">>" if is_dir else "  "
+        if is_dir:
+            label = f"{marker} [{name}]"
+        else:
+            label = f"{marker}  {name}"
+
+        cv2.putText(
+            frame,
+            label,
+            (x0 + 18, y1 - 9),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            color,
+            1,
+            cv2.LINE_AA,
+        )
+
+    def render(
+        self,
+        frame,
+        title,
+        directory_label,
+        entries,
+        cursor=None,
+        scroll_offset=0,
+        item_suffix=None,
+    ):
+        """Render the full HUD onto ``frame`` and return the hovered index."""
+        frame_h, frame_w = frame.shape[:2]
+        self._layout(frame_w, frame_h)
+
+        self.hover_index = self.hovered_index(cursor, frame_w, frame_h)
+        clamped_hover = None
+        if self.hover_index is not None:
+            visible_count = len(entries[scroll_offset:])
+            if self.hover_index < visible_count:
+                clamped_hover = self.hover_index
+
+        self._draw_panel(frame)
+
+        cv2.putText(
+            frame,
+            title,
+            (self.panel_x + 22, self.title_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            HEADER_COLOR,
+            2,
+            cv2.LINE_AA,
+        )
+        path_label = directory_label if directory_label else "[ ROOT ]"
+        if len(path_label) > 60:
+            path_label = "..." + path_label[-57:]
+        cv2.putText(
+            frame,
+            path_label,
+            (self.panel_x + 22, self.path_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            TEXT_DIM,
+            1,
+            cv2.LINE_AA,
+        )
+
+        if item_suffix:
+            cv2.putText(
+                frame,
+                item_suffix,
+                (self.panel_x + self.panel_w - 190, self.path_y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                ACCENT_BRIGHT,
+                1,
+                cv2.LINE_AA,
+            )
+
+        start = scroll_offset
+        end = min(len(entries), start + self.visible_rows)
+        for i, entry in enumerate(entries[start:end]):
+            abs_index = start + i
+            top = self.list_top + abs_index * self.row_height
+            bottom = top + self.row_height - 4
+            if bottom > self.panel_y + self.panel_h - 10:
+                break
+            self._draw_row(
+                frame,
+                entry.name,
+                entry.is_dir,
+                (
+                    self.panel_x + 8,
+                    top,
+                    self.panel_x + self.panel_w - 8,
+                    bottom,
+                ),
+                clamped_hover == abs_index,
+            )
+
+        return self.hover_index
