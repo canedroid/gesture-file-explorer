@@ -37,6 +37,9 @@ class ExplorerApp:
         self.lines = []
         self.error_message = ""
         self.scroll_offset = 0
+        self._wrapped_count = 0
+        self._drag_anchor_y = None
+        self._drag_start_scroll = 0
         self.reload()
 
     @property
@@ -133,3 +136,29 @@ class ExplorerApp:
         """Scroll the current view by ``delta`` rows within bounds."""
         max_offset = max(0, total_rows - visible_rows)
         self.scroll_offset = max(0, min(max_offset, self.scroll_offset + delta))
+
+    def scroll_to(self, offset, total_rows, visible_rows):
+        """Scroll the current view to an absolute row within bounds."""
+        max_offset = max(0, total_rows - visible_rows)
+        self.scroll_offset = max(0, min(max_offset, offset))
+
+    def begin_drag(self, y):
+        """Start a pinch-drag scroll anchored at pixel row ``y``."""
+        self._drag_anchor_y = y
+        self._drag_start_scroll = self.scroll_offset
+
+    def drag_to(self, y, pixels_per_row, total_rows, visible_rows):
+        """Apply drag scrolling by the anchored pixel delta.
+
+        Dragging the finger upward (y decreases) reveals later content and
+        increases the scroll offset.
+        """
+        if self._drag_anchor_y is None:
+            self.begin_drag(y)
+        delta_rows = int((self._drag_anchor_y - y) / max(1, pixels_per_row))
+        self.scroll_to(
+            self._drag_start_scroll + delta_rows, total_rows, visible_rows
+        )
+
+    def end_drag(self):
+        self._drag_anchor_y = None

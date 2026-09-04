@@ -1,6 +1,7 @@
 """Tests for the gesture-to-navigation state machine."""
 
 from app import ExplorerApp, ViewState
+from file_engine import FileEntry
 
 
 def mkdir_scaffold(tmp_path):
@@ -120,3 +121,46 @@ def test_scroll_page_is_bounded(tmp_path):
 
     app.scroll_page(1000, 100, 20)
     assert app.scroll_offset == 80
+
+
+def test_pinch_drag_scrolls_relative_to_anchor(tmp_path):
+    tmp_path = mkdir_scaffold(tmp_path)
+    app = ExplorerApp()
+    app.navigate_to(str(tmp_path))
+
+    app.begin_drag(y=200)
+    app.drag_to(y=140, pixels_per_row=30, total_rows=100, visible_rows=20)
+    assert app.scroll_offset == 2
+
+    app.drag_to(y=200, pixels_per_row=30, total_rows=100, visible_rows=20)
+    assert app.scroll_offset == 0
+
+    app.begin_drag(y=4000)
+    app.drag_to(y=0, pixels_per_row=30, total_rows=100, visible_rows=20)
+    assert app.scroll_offset == 80
+
+
+def test_drag_without_explicit_begin_starts_implicitly(tmp_path):
+    tmp_path = mkdir_scaffold(tmp_path)
+    app = ExplorerApp()
+    app.navigate_to(str(tmp_path))
+    app.drag_to(y=40, pixels_per_row=20, total_rows=100, visible_rows=20)
+    assert app.scroll_offset == 0
+    app.drag_to(y=20, pixels_per_row=20, total_rows=100, visible_rows=20)
+    assert app.scroll_offset == 1
+
+
+def test_permission_error_opening_file_is_caught(tmp_path, monkeypatch):
+    def boom(path):
+        raise PermissionError("Access is denied")
+
+    monkeypatch.setattr("app.read_text_file", boom)
+    app = ExplorerApp()
+    app.navigate_to(str(tmp_path))
+
+    bad = FileEntry(
+        name="locked.txt", path=str(tmp_path / "locked.txt"), is_dir=False
+    )
+    app.open_file(bad)
+    assert app.state is ViewState.FOLDER_VIEW
+    assert "Access is denied" in app.error_message

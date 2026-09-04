@@ -111,3 +111,34 @@ def test_hud_wrap_lines_splits_long_lines():
     assert "".join(wrapped).replace(" ", "") == long_line.strip().replace(
         " ", ""
     )
+
+
+def many_entries(n):
+    return [
+        FileEntry(name=f"item_{i}", path=f"C:\\item_{i}", is_dir=(i % 2 == 0))
+        for i in range(n)
+    ]
+
+
+def test_hud_pager_button_hit_testing():
+    frame = np.zeros((FRAME_H, FRAME_W, 3), dtype=np.uint8)
+    hud = HUD()
+    hud.render(frame, "T", "C:\\", many_entries(200))  # overflows panel
+
+    assert hud.scroll_up_rect is not None
+    assert hud.scroll_down_rect is not None
+    up = hud.scroll_up_rect
+    down = hud.scroll_down_rect
+    assert hud.pager_button_at(up[0] + 5, up[1] + 5) == "up"
+    assert hud.pager_button_at(down[0] + 5, down[1] + 5) == "down"
+    assert hud.pager_button_at(300, 400) is None
+
+
+def test_hud_render_text_pager_visible_for_long_document():
+    frame = np.zeros((FRAME_H, FRAME_W, 3), dtype=np.uint8)
+    hud = HUD()
+    long_lines = [f"line number {i} with some contents" for i in range(500)]
+    hud.render_text(frame, "FILE VIEW", "long.md", long_lines)
+    assert hud.last_text_rows >= 1
+    assert hud.scroll_up_rect is not None
+    assert hud.scroll_down_rect is not None

@@ -45,6 +45,11 @@ class HUD:
         self.list_top = 0
         self.visible_rows = 0
         self.hover_index = None
+        self.hovered_button = None
+        self.pager_visible = False
+        self.scroll_up_rect = None
+        self.scroll_down_rect = None
+        self.last_text_rows = 0
 
     def _layout(self, frame_w, frame_h):
         self.panel_x = self.margin_x
@@ -57,6 +62,83 @@ class HUD:
         self.visible_rows = max(
             0, (self.panel_h - 100) // self.row_height
         )
+
+    def _pager_rects(self):
+        x1 = self.panel_x + self.panel_w - 12
+        up = (x1 - 30, self.panel_y + self.panel_h - 74, x1, self.panel_y + self.panel_h - 46)
+        down = (x1 - 30, self.panel_y + self.panel_h - 40, x1, self.panel_y + self.panel_h - 12)
+        return up, down
+
+    @staticmethod
+    def _in_rect(px, py, rect):
+        if rect is None:
+            return False
+        x0, y0, x1, y1 = rect
+        return x0 <= px <= x1 and y0 <= py <= y1
+
+    def _draw_pager(self, frame, cursor):
+        self.pager_visible = True
+        up, down = self._pager_rects()
+        self.scroll_up_rect = up
+        self.scroll_down_rect = down
+        self.hovered_button = None
+
+        hover_up = hover_down = False
+        if cursor is not None and cursor.visible:
+            hover_up = self._in_rect(cursor.x, cursor.y, up)
+            hover_down = self._in_rect(cursor.x, cursor.y, down)
+        if hover_up:
+            self.hovered_button = "up"
+        elif hover_down:
+            self.hovered_button = "down"
+
+        for rect, hovered, up_dir in (
+            (up, hover_up, True),
+            (down, hover_down, False),
+        ):
+            x0, y0, x1, y1 = rect
+            if hovered:
+                roi = frame[y0:y1, x0:x1]
+                overlay = np.full_like(roi, HOVER_BG, dtype=np.uint8)
+                frame[y0:y1, x0:x1] = cv2.addWeighted(
+                    overlay, HOVER_ALPHA, roi, 1.0 - HOVER_ALPHA, 0
+                )
+            cv2.rectangle(frame, (x0, y0), (x1, y1), ACCENT_BRIGHT if hovered else ACCENT, 1)
+            cy = (y0 + y1) // 2
+            for dx in (-7, 7):
+                tip_y = y0 + 8 if up_dir else y1 - 8
+                cv2.line(
+                    frame,
+                    (x0 + 15, tip_y),
+                    (x0 + 15 + dx, cy),
+                    ACCENT_BRIGHT,
+                    2,
+                )
+
+    def _draw_pager_if_needed(self, frame, cursor, overflow):
+        if overflow:
+            self._draw_pager(frame, cursor)
+
+    def _draw_hint(self, frame, text):
+        cv2.putText(
+            frame,
+            text,
+            (self.panel_x + 22, self.panel_y + self.panel_h - 12),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            TEXT_DIM,
+            1,
+            cv2.LINE_AA,
+        )
+
+    def pager_button_at(self, x, y):
+        """Return 'up', 'down', or None for a click position over the pager."""
+        up, down = self._pager_rects()
+        if self._in_rect(x, y, up):
+            return "up"
+        if self._in_rect(x, y, down):
+            return "down"
+        return None
 
     def hovered_index(self, cursor, frame_w, frame_h):
         """Return the list row under the virtual cursor, or None."""
@@ -188,6 +270,14 @@ class HUD:
             frame, title, directory_label or "[ ROOT ]", item_suffix
         )
 
+        overflow = len(entries) > self.visible_rows
+        self._draw_pager_if_needed(frame, cursor, overflow)
+        if self.hovered_button is None and self.hover_index is not None:
+            self.hovered_button = None
+
+        hint = "PINCH: OPEN  W/S: SCROLL  Q: QUIT" if overflow else "PINCH: OPEN  Q: QUIT"
+        self._draw_hint(frame, hint)
+
         start = scroll_offset
         end = min(len(entries), start + self.visible_rows)
         for i, entry in enumerate(entries[start:end]):
@@ -304,6 +394,7 @@ class HUD:
         line_top = self.list_top + self.row_height
         available_h = self.panel_y + self.panel_h - line_top - 24
         text_rows = max(1, available_h // (self.row_height - 16))
+        self.last_text_rows = text_rows
         start = scroll_line
         end = min(len(wrapped), start + text_rows)
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -338,11 +429,19 @@ class HUD:
         cv2.putText(
             frame,
             status,
-            (self.panel_x + 22, self.panel_y + self.panel_h - 12),
+            (self.panel_x + 22, self.panel_y + self.panel_h - 36),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
             TEXT_DIM,
             1,
             cv2.LINE_AA,
+        )
+
+        self._draw_pager_if_needed(
+            frame, cursor, len(wrapped) > text_rows
+        )
+        self._draw_hint(
+            frame,
+            "DRAG: SCROLL  W/S: SCROLL  Q: QUIT",
         )
         return self.hover_index, len(wrapped)
