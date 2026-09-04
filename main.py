@@ -3,12 +3,14 @@
 import cv2
 
 from camera import Camera
+from gesture_control import Cursor
 from hand_tracker import HandTracker
 
 
 def main():
     camera = Camera()
     tracker = HandTracker()
+    cursor = Cursor()
 
     window_name = "Gesture File Explorer"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
@@ -28,6 +30,11 @@ def main():
 
             results = tracker.find_hands(rgb_frame)
             tracker.draw_landmarks(frame, results)
+
+            height, width = frame.shape[:2]
+            landmarks = tracker.get_landmarks(results)
+            cursor.update(landmarks, width, height)
+            cursor.draw(frame)
 
             cv2.imshow(window_name, frame)
             if cv2.waitKey(1) & 0xFF == ord("q"):
