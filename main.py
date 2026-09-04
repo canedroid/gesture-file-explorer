@@ -36,7 +36,6 @@ def main():
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
                 results = tracker.find_hands(rgb_frame)
-                tracker.draw_landmarks(frame, results)
 
                 height, width = frame.shape[:2]
                 landmarks = tracker.get_landmarks(results)
@@ -76,7 +75,7 @@ def main():
                 if cursor.is_pinched and dragging_area:
                     app.drag_to(
                         cursor.y,
-                        max(1, hud.row_height - 16),
+                        max(1, hud.row_height - 18),
                         app._wrapped_count,
                         hud.visible_rows,
                     )
@@ -87,7 +86,7 @@ def main():
                     wrapped_count = hud.render_text(
                         frame,
                         "FILE VIEW",
-                        app.directory_label,
+                        app.friendly_label,
                         app.lines,
                         scroll_line=app.scroll_offset,
                         cursor=cursor,
@@ -105,10 +104,11 @@ def main():
                     hud.render(
                         frame,
                         "GESTURE FILE EXPLORER",
-                        app.directory_label,
+                        app.friendly_label,
                         app.entries,
                         cursor=cursor,
                         scroll_offset=app.scroll_offset,
+                        item_suffix=f"{len(app.entries):03d} ENTRIES",
                     )
 
                 if app.error_message:

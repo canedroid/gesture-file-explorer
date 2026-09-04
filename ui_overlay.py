@@ -1,20 +1,32 @@
-"""Sci-fi AR HUD overlay rendered directly on the camera frame."""
+"""Futuristic translucent AR HUD rendered directly on the camera frame.
+
+Styles the application as a sci-fi holographic interface: glowing cyan and
+amber accents, angular tech corner brackets, drop-shadow typography, and
+animated hover highlights.
+"""
+
+import math
+import time
 
 import cv2
 import numpy as np
 
-ACCENT = (255, 180, 0)          # BGR amber
-ACCENT_BRIGHT = (255, 230, 120)
-HEADER_COLOR = (240, 220, 140)
-DIR_COLOR = (255, 210, 90)      # amber for folders
-FILE_COLOR = (130, 230, 255)    # cyan for files
-HOVER_BG = (40, 70, 120)
-HOVER_BORDER = (255, 180, 0)
-PANEL_BG = (12, 18, 38)
-TEXT_DIM = (170, 180, 200)
+CYAN = (255, 240, 0)            # #00F0FF
+CYAN_SOFT = (190, 225, 60)      # dimmer cyan for hairline details
+AMBER = (30, 176, 255)          # #FFB000
+AMBER_BRIGHT = (120, 220, 255)
+PANEL_BG = (10, 16, 32)
+TEXT = (240, 248, 255)
+DIM = (150, 180, 195)
+HOVER_BG = (60, 70, 150)
+HOVER_BORDER = (255, 240, 0)
+SHADOW = (6, 10, 18)
 
-PANEL_ALPHA = 0.45
-HOVER_ALPHA = 0.6
+PANEL_ALPHA = 0.48
+HOVER_ALPHA = 0.5
+MAX_VISIBLE_ROWS = 6
+CORNER_CUT = 16
+CORNER_ARM = 26
 
 
 class HUD:
@@ -26,15 +38,17 @@ class HUD:
         self,
         panel_alpha=PANEL_ALPHA,
         margin_x=40,
-        margin_top=80,
-        margin_bottom=70,
-        row_height=34,
+        margin_top=76,
+        margin_bottom=66,
+        row_height=44,
+        max_rows=MAX_VISIBLE_ROWS,
     ):
         self.panel_alpha = panel_alpha
         self.margin_x = margin_x
         self.margin_top = margin_top
         self.margin_bottom = margin_bottom
         self.row_height = row_height
+        self.max_rows = max_rows
 
         self.panel_x = 0
         self.panel_y = 0
@@ -51,95 +65,183 @@ class HUD:
         self.scroll_down_rect = None
         self.last_text_rows = 0
 
+    # ------------------------------------------------------------------ layout
     def _layout(self, frame_w, frame_h):
         self.panel_x = self.margin_x
         self.panel_y = self.margin_top
         self.panel_w = frame_w - 2 * self.margin_x
         self.panel_h = frame_h - self.margin_top - self.margin_bottom
-        self.title_y = self.panel_y + 34
-        self.path_y = self.panel_y + 62
-        self.list_top = self.panel_y + 92
-        self.visible_rows = max(
-            0, (self.panel_h - 100) // self.row_height
+        self.title_y = self.panel_y + 42
+        self.path_y = self.panel_y + 74
+        self.list_top = self.panel_y + 108
+        fit = (self.panel_h - 150) // self.row_height
+        self.visible_rows = max(0, min(self.max_rows, fit))
+
+    # ------------------------------------------------------------------- text
+    def _draw_text(self, frame, text, org, scale, color, bold=False):
+        """Draw text with an offset drop shadow for a layered glow look."""
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        x, y = org
+        cv2.putText(
+            frame, text, (x + 2, y + 2), font, scale, SHADOW, 3, cv2.LINE_AA
         )
-
-    def _pager_rects(self):
-        x1 = self.panel_x + self.panel_w - 12
-        up = (x1 - 30, self.panel_y + self.panel_h - 74, x1, self.panel_y + self.panel_h - 46)
-        down = (x1 - 30, self.panel_y + self.panel_h - 40, x1, self.panel_y + self.panel_h - 12)
-        return up, down
-
-    @staticmethod
-    def _in_rect(px, py, rect):
-        if rect is None:
-            return False
-        x0, y0, x1, y1 = rect
-        return x0 <= px <= x1 and y0 <= py <= y1
-
-    def _draw_pager(self, frame, cursor):
-        self.pager_visible = True
-        up, down = self._pager_rects()
-        self.scroll_up_rect = up
-        self.scroll_down_rect = down
-        self.hovered_button = None
-
-        hover_up = hover_down = False
-        if cursor is not None and cursor.visible:
-            hover_up = self._in_rect(cursor.x, cursor.y, up)
-            hover_down = self._in_rect(cursor.x, cursor.y, down)
-        if hover_up:
-            self.hovered_button = "up"
-        elif hover_down:
-            self.hovered_button = "down"
-
-        for rect, hovered, up_dir in (
-            (up, hover_up, True),
-            (down, hover_down, False),
-        ):
-            x0, y0, x1, y1 = rect
-            if hovered:
-                roi = frame[y0:y1, x0:x1]
-                overlay = np.full_like(roi, HOVER_BG, dtype=np.uint8)
-                frame[y0:y1, x0:x1] = cv2.addWeighted(
-                    overlay, HOVER_ALPHA, roi, 1.0 - HOVER_ALPHA, 0
-                )
-            cv2.rectangle(frame, (x0, y0), (x1, y1), ACCENT_BRIGHT if hovered else ACCENT, 1)
-            cy = (y0 + y1) // 2
-            for dx in (-7, 7):
-                tip_y = y0 + 8 if up_dir else y1 - 8
-                cv2.line(
-                    frame,
-                    (x0 + 15, tip_y),
-                    (x0 + 15 + dx, cy),
-                    ACCENT_BRIGHT,
-                    2,
-                )
-
-    def _draw_pager_if_needed(self, frame, cursor, overflow):
-        if overflow:
-            self._draw_pager(frame, cursor)
+        thickness = 2 if bold else 1
+        cv2.putText(
+            frame, text, (x, y), font, scale, color, thickness, cv2.LINE_AA
+        )
 
     def _draw_hint(self, frame, text):
-        cv2.putText(
-            frame,
-            text,
-            (self.panel_x + 22, self.panel_y + self.panel_h - 12),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.45,
-            TEXT_DIM,
-            1,
-            cv2.LINE_AA,
+        self._draw_text(
+            frame, text, (self.panel_x + 22, self.panel_y + self.panel_h - 14),
+            0.45, DIM,
         )
 
-    def pager_button_at(self, x, y):
-        """Return 'up', 'down', or None for a click position over the pager."""
-        up, down = self._pager_rects()
-        if self._in_rect(x, y, up):
-            return "up"
-        if self._in_rect(x, y, down):
-            return "down"
-        return None
+    # ------------------------------------------------------------------ panel
+    def _draw_panel(self, frame):
+        x0, y0 = self.panel_x, self.panel_y
+        x1, y1 = x0 + self.panel_w, y0 + self.panel_h
+        cut = CORNER_CUT
 
+        roi = frame[y0:y1, x0:x1]
+        overlay = np.full_like(roi, PANEL_BG, dtype=np.uint8)
+        blend = cv2.addWeighted(
+            overlay, self.panel_alpha, roi, 1.0 - self.panel_alpha, 0
+        )
+        frame[y0:y1, x0:x1] = blend
+
+        # Tinted edge aura for a soft holographic seam.
+        edge = np.zeros_like(roi)
+        cv2.rectangle(edge, (0, 0), (x1 - x0, y1 - y0), CYAN_SOFT, 2)
+        frame[y0:y1, x0:x1] = cv2.addWeighted(edge, 0.25, frame[y0:y1, x0:x1], 0.75, 0)
+
+        # Angular cut-corner border frame.
+        pts = np.array(
+            [
+                [x0 + cut, y0],
+                [x1 - cut, y0],
+                [x1, y0 + cut],
+                [x1, y1 - cut],
+                [x1 - cut, y1],
+                [x0 + cut, y1],
+                [x0, y1 - cut],
+                [x0, y0 + cut],
+            ],
+            np.int32,
+        )
+        cv2.polylines(
+            frame, [pts], True, CYAN_SOFT, 1, cv2.LINE_AA
+        )
+        cv2.polylines(frame, [pts], True, CYAN, 2, cv2.LINE_AA)
+
+        # Corner tech brackets.
+        arm = CORNER_ARM
+        for cx, cy, sx, sy in (
+            (x0, y0, 1, 1),
+            (x1, y0, -1, 1),
+            (x0, y1, 1, -1),
+            (x1, y1, -1, -1),
+        ):
+            cv2.line(
+                frame,
+                (cx, cy + sy * cut),
+                (cx, cy + sy * arm),
+                AMBER_BRIGHT,
+                2,
+                cv2.LINE_AA,
+            )
+            cv2.line(
+                frame,
+                (cx + sx * cut, cy),
+                (cx + sx * arm, cy),
+                AMBER_BRIGHT,
+                2,
+                cv2.LINE_AA,
+            )
+            cv2.line(
+                frame,
+                (cx + sx * arm // 2, cy + sy * 1),
+                (cx + sx * arm, cy + sy * 1),
+                AMBER,
+                1,
+                cv2.LINE_AA,
+            )
+
+        # Animated energy dot travelling the header seam.
+        t = time.time()
+        dot_x = x0 + int(((t * 0.28) % 1.0) * self.panel_w)
+        seam_y = self.path_y + 26
+        cv2.line(frame, (x0, seam_y), (x1, seam_y), CYAN_SOFT, 1)
+        cv2.line(frame, (x0, seam_y + 1), (x1, seam_y + 1), SHADOW, 2)
+        cv2.circle(frame, (dot_x, seam_y), 3, AMBER_BRIGHT, -1, cv2.LINE_AA)
+        cv2.circle(frame, (dot_x, seam_y), 7, AMBER, 1, cv2.LINE_AA)
+
+    # ------------------------------------------------------------------- rows
+    def _draw_row(self, frame, name, is_dir, row_rect, hovered):
+        x0, y0, x1, y1 = row_rect
+        t = time.time()
+
+        if hovered:
+            alpha = HOVER_ALPHA + 0.12 * (0.5 + 0.5 * math.sin(t * 6.0))
+            roi = frame[y0:y1, x0:x1]
+            overlay = np.full_like(roi, HOVER_BG, dtype=np.uint8)
+            frame[y0:y1, x0:x1] = cv2.addWeighted(
+                overlay, alpha, roi, 1.0 - alpha, 0
+            )
+            pulse = 0.5 + 0.5 * math.sin(t * 6.0)
+            border = (
+                int(255 - 120 * pulse),
+                int(240),
+                int(0 + 120 * pulse),
+            )
+            cv2.rectangle(frame, (x0, y0), (x1, y1), border, 1, cv2.LINE_AA)
+            cv2.rectangle(
+                frame,
+                (x0, y0),
+                (x0 + 4, y1),
+                HOVER_BORDER if pulse > 0 else CYAN_SOFT,
+                -1,
+            )
+            cv2.line(
+                frame,
+                (x0, y1 - 2),
+                (x0 + int(0.5 * (x1 - x0)), y1 - 2),
+                border,
+                2,
+                cv2.LINE_AA,
+            )
+
+        text_y = y1 - 12
+        if is_dir:
+            self._draw_text(
+                frame,
+                ">",
+                (x0 + 14, text_y),
+                0.6,
+                AMBER,
+                bold=True,
+            )
+            self._draw_text(
+                frame,
+                name,
+                (x0 + 36, text_y),
+                0.55,
+                AMBER_BRIGHT if hovered else AMBER,
+            )
+        else:
+            ext = name.rsplit(".", 1)[-1].upper() if "." in name else ""
+            self._draw_text(
+                frame, name, (x0 + 18, text_y), 0.55, TEXT
+            )
+            if ext:
+                badge = ext[:3]
+                bx = x1 - 12 - cv2.getTextSize(
+                    badge, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1
+                )[0][0]
+                self._draw_text(
+                    frame, badge, (bx, text_y), 0.45, CYAN if hovered else CYAN_SOFT
+                )
+
+    # ------------------------------------------------------------------ hover
     def hovered_index(self, cursor, frame_w, frame_h):
         """Return the list row under the virtual cursor, or None."""
         self._layout(frame_w, frame_h)
@@ -155,95 +257,111 @@ class HUD:
             return None
         return index
 
-    def _draw_panel(self, frame):
-        x0, y0 = self.panel_x, self.panel_y
-        x1, y1 = x0 + self.panel_w, y0 + self.panel_h
-        roi = frame[y0:y1, x0:x1]
-        overlay = np.full_like(roi, PANEL_BG, dtype=np.uint8)
-        blended = cv2.addWeighted(
-            overlay, self.panel_alpha, roi, 1.0 - self.panel_alpha, 0
-        )
-        frame[y0:y1, x0:x1] = blended
-
-        cv2.rectangle(frame, (x0, y0), (x1, y1), ACCENT, 1)
-        corner = 22
-        for cx, cy, dir_x, dir_y in (
-            (x0, y0, 1, 1),
-            (x1, y0, -1, 1),
-            (x0, y1, 1, -1),
-            (x1, y1, -1, -1),
-        ):
-            cv2.line(frame, (cx, cy), (cx + corner * dir_x, cy), ACCENT_BRIGHT, 2)
-            cv2.line(frame, (cx, cy), (cx, cy + corner * dir_y), ACCENT_BRIGHT, 2)
-
-        line_y = y0 + 74
-        cv2.line(frame, (x0, line_y), (x1, line_y), ACCENT, 1)
-
-    def _draw_row(self, frame, name, is_dir, row_rect, hovered):
-        x0, y0, x1, y1 = row_rect
-        if hovered:
-            roi = frame[y0:y1, x0:x1]
-            overlay = np.full_like(roi, HOVER_BG, dtype=np.uint8)
-            blended = cv2.addWeighted(
-                overlay, HOVER_ALPHA, roi, 1.0 - HOVER_ALPHA, 0
-            )
-            frame[y0:y1, x0:x1] = blended
-            cv2.rectangle(frame, (x0, y0), (x1, y1), HOVER_BORDER, 1)
-
-        color = DIR_COLOR if is_dir else FILE_COLOR
-        marker = ">>" if is_dir else "  "
-        if is_dir:
-            label = f"{marker} [{name}]"
-        else:
-            label = f"{marker}  {name}"
-
-        cv2.putText(
-            frame,
-            label,
-            (x0 + 18, y1 - 9),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            color,
-            1,
-            cv2.LINE_AA,
-        )
-
     def _draw_header(self, frame, title, path_label, suffix=None):
-        cv2.putText(
+        self._draw_text(
             frame,
             title,
-            (self.panel_x + 22, self.title_y),
-            cv2.FONT_HERSHEY_SIMPLEX,
+            (self.panel_x + 26, self.title_y),
             0.7,
-            HEADER_COLOR,
-            2,
-            cv2.LINE_AA,
+            TEXT,
+            bold=True,
         )
-        if len(path_label) > 60:
-            path_label = "..." + path_label[-57:]
-        cv2.putText(
-            frame,
-            path_label,
-            (self.panel_x + 22, self.path_y),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            TEXT_DIM,
-            1,
-            cv2.LINE_AA,
+        if len(path_label) > 56:
+            path_label = "..." + path_label[-53:]
+        self._draw_text(
+            frame, path_label, (self.panel_x + 26, self.path_y), 0.55, DIM
         )
-
         if suffix:
-            cv2.putText(
+            sw = cv2.getTextSize(
+                suffix, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
+            )[0][0]
+            self._draw_text(
                 frame,
                 suffix,
-                (self.panel_x + self.panel_w - 210, self.path_y),
-                cv2.FONT_HERSHEY_SIMPLEX,
+                (self.panel_x + self.panel_w - sw - 26, self.path_y),
                 0.5,
-                ACCENT_BRIGHT,
+                CYAN_SOFT,
+            )
+
+    # -------------------------------------------------------------- pager
+    def _pager_rects(self):
+        x1 = self.panel_x + self.panel_w - 12
+        up = (
+            x1 - 30,
+            self.panel_y + self.panel_h - 76,
+            x1,
+            self.panel_y + self.panel_h - 48,
+        )
+        down = (
+            x1 - 30,
+            self.panel_y + self.panel_h - 42,
+            x1,
+            self.panel_y + self.panel_h - 14,
+        )
+        return up, down
+
+    @staticmethod
+    def _in_rect(px, py, rect):
+        if rect is None:
+            return False
+        x0, y0, x1, y1 = rect
+        return x0 <= px <= x1 and y0 <= py <= y1
+
+    def pager_button_at(self, x, y):
+        """Return 'up', 'down', or None for a click position over the pager."""
+        up, down = self._pager_rects()
+        if self._in_rect(x, y, up):
+            return "up"
+        if self._in_rect(x, y, down):
+            return "down"
+        return None
+
+    def _draw_pager(self, frame, cursor):
+        self.pager_visible = True
+        up, down = self._pager_rects()
+        self.scroll_up_rect = up
+        self.scroll_down_rect = down
+
+        hover_up = hover_down = False
+        if cursor is not None and cursor.visible:
+            hover_up = self._in_rect(cursor.x, cursor.y, up)
+            hover_down = self._in_rect(cursor.x, cursor.y, down)
+        self.hovered_button = "up" if hover_up else "down" if hover_down else None
+
+        for rect, hovered, go_up in ((up, hover_up, True), (down, hover_down, False)):
+            x0, y0, x1, y1 = rect
+            if hovered:
+                roi = frame[y0:y1, x0:x1]
+                overlay = np.full_like(roi, HOVER_BG, dtype=np.uint8)
+                frame[y0:y1, x0:x1] = cv2.addWeighted(
+                    overlay, HOVER_ALPHA, roi, 1.0 - HOVER_ALPHA, 0
+                )
+            cv2.rectangle(
+                frame,
+                (x0, y0),
+                (x1, y1),
+                HOVER_BORDER if hovered else CYAN_SOFT,
                 1,
                 cv2.LINE_AA,
             )
+            cy = (y0 + y1) // 2
+            tip_y = y0 + 8 if go_up else y1 - 8
+            color = HOVER_BORDER if hovered else CYAN
+            for dx in (-7, 7):
+                cv2.line(
+                    frame,
+                    (x0 + 15, tip_y),
+                    (x0 + 15 + dx, cy),
+                    color,
+                    2,
+                    cv2.LINE_AA,
+                )
 
+    def _draw_pager_if_needed(self, frame, cursor, overflow):
+        if overflow:
+            self._draw_pager(frame, cursor)
+
+    # ------------------------------------------------------------ list render
     def render(
         self,
         frame,
@@ -267,15 +385,16 @@ class HUD:
 
         self._draw_panel(frame)
         self._draw_header(
-            frame, title, directory_label or "[ ROOT ]", item_suffix
+            frame, title, directory_label or "[ THIS PC ]", item_suffix
         )
 
         overflow = len(entries) > self.visible_rows
         self._draw_pager_if_needed(frame, cursor, overflow)
-        if self.hovered_button is None and self.hover_index is not None:
-            self.hovered_button = None
-
-        hint = "PINCH: OPEN  W/S: SCROLL  Q: QUIT" if overflow else "PINCH: OPEN  Q: QUIT"
+        hint = (
+            "PINCH: OPEN   W/S: SCROLL   Q: QUIT"
+            if overflow
+            else "PINCH: OPEN   Q: QUIT"
+        )
         self._draw_hint(frame, hint)
 
         start = scroll_offset
@@ -283,17 +402,17 @@ class HUD:
         for i, entry in enumerate(entries[start:end]):
             abs_index = start + i
             top = self.list_top + abs_index * self.row_height
-            bottom = top + self.row_height - 4
-            if bottom > self.panel_y + self.panel_h - 10:
+            bottom = top + self.row_height - 6
+            if bottom > self.panel_y + self.panel_h - 90:
                 break
             self._draw_row(
                 frame,
                 entry.name,
                 entry.is_dir,
                 (
-                    self.panel_x + 8,
+                    self.panel_x + 10,
                     top,
-                    self.panel_x + self.panel_w - 8,
+                    self.panel_x + self.panel_w - 10,
                     bottom,
                 ),
                 clamped_hover == abs_index,
@@ -301,6 +420,7 @@ class HUD:
 
         return self.hover_index
 
+    # ------------------------------------------------------------ text render
     @staticmethod
     def _wrap_text_line(text, max_px, font, scale, thickness):
         width, _ = cv2.getTextSize(text, font, scale, thickness)[0]
@@ -375,7 +495,7 @@ class HUD:
         self._draw_header(
             frame,
             title,
-            directory_label or "[ FILE VIEW ]",
+            directory_label or "[ FILE ]",
             None,
         )
         self._draw_row(
@@ -383,65 +503,47 @@ class HUD:
             "<-- BACK",
             True,
             (
-                self.panel_x + 8,
+                self.panel_x + 10,
                 self.list_top,
-                self.panel_x + self.panel_w - 8,
-                self.list_top + self.row_height - 4,
+                self.panel_x + self.panel_w - 10,
+                self.list_top + self.row_height - 6,
             ),
             hover_back,
         )
 
-        line_top = self.list_top + self.row_height
-        available_h = self.panel_y + self.panel_h - line_top - 24
-        text_rows = max(1, available_h // (self.row_height - 16))
+        line_top = self.list_top + self.row_height + 8
+        available_h = self.panel_y + self.panel_h - line_top - 40
+        text_rows = max(1, available_h // (self.row_height - 18))
         self.last_text_rows = text_rows
         start = scroll_line
         end = min(len(wrapped), start + text_rows)
-        font = cv2.FONT_HERSHEY_SIMPLEX
 
         for i, line in enumerate(wrapped[start:end]):
-            y = line_top + 28 + i * (self.row_height - 16)
-            if y > self.panel_y + self.panel_h - 30:
+            y = line_top + 32 + i * (self.row_height - 18)
+            if y > self.panel_y + self.panel_h - 40:
                 break
-            color = FILE_COLOR
             stripped = line.lstrip()
             if stripped.startswith("#"):
-                color = HEADER_COLOR
+                self._draw_text(frame, line, (self.panel_x + 26, y), 0.5, AMBER_BRIGHT)
             elif stripped.startswith(("-", "*", "+", ">")) or stripped.startswith(
                 ("1.", "2.", "3.")
             ):
-                color = ACCENT
+                self._draw_text(frame, line, (self.panel_x + 26, y), 0.5, CYAN)
             elif not stripped:
                 continue
-            cv2.putText(
-                frame,
-                line,
-                (self.panel_x + 22, y),
-                font,
-                0.5,
-                color,
-                1,
-                cv2.LINE_AA,
-            )
+            else:
+                self._draw_text(frame, line, (self.panel_x + 26, y), 0.5, TEXT)
 
         total = file_total if file_total is not None else len(wrapped)
-        status = f"LN {min(start+1, total)}-{min(end, total)} / {total}"
-        cv2.putText(
+        status = f"LINES {min(start + 1, total)}-{min(end, total)} / {total}"
+        self._draw_text(
             frame,
             status,
-            (self.panel_x + 22, self.panel_y + self.panel_h - 36),
-            cv2.FONT_HERSHEY_SIMPLEX,
+            (self.panel_x + 26, self.panel_y + self.panel_h - 34),
             0.5,
-            TEXT_DIM,
-            1,
-            cv2.LINE_AA,
+            CYAN_SOFT,
         )
 
-        self._draw_pager_if_needed(
-            frame, cursor, len(wrapped) > text_rows
-        )
-        self._draw_hint(
-            frame,
-            "DRAG: SCROLL  W/S: SCROLL  Q: QUIT",
-        )
+        self._draw_pager_if_needed(frame, cursor, len(wrapped) > text_rows)
+        self._draw_hint(frame, "DRAG: SCROLL   W/S: SCROLL   Q: QUIT")
         return self.hover_index, len(wrapped)

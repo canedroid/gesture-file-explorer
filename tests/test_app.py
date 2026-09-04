@@ -164,3 +164,27 @@ def test_permission_error_opening_file_is_caught(tmp_path, monkeypatch):
     app.open_file(bad)
     assert app.state is ViewState.FOLDER_VIEW
     assert "Access is denied" in app.error_message
+
+
+def test_friendly_label_for_root_drive_and_dir(tmp_path):
+    app = ExplorerApp()
+    assert app.friendly_label == "THIS PC"
+
+    app.navigate_to("C:\\")
+    assert app.friendly_label == "DRIVE: C://"
+
+    sub = tmp_path / "Projects"
+    sub.mkdir()
+    app.navigate_to(str(sub))
+    assert app.friendly_label == f"DIR: {sub.name}"
+
+
+def test_friendly_label_for_file_view(tmp_path):
+    tmp_path = mkdir_scaffold(tmp_path)
+    app = ExplorerApp()
+    app.navigate_to(str(tmp_path))
+    idx = next(
+        i for i, e in enumerate(app.entries) if e.name == "notes.md"
+    )
+    app.activate_index(idx)
+    assert app.friendly_label == "READING // notes.md"

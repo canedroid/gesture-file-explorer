@@ -1,6 +1,9 @@
-"""Real-time hand landmark tracking built on MediaPipe Hands."""
+"""Real-time hand landmark tracking built on MediaPipe Hands.
 
-import cv2
+Only the raw landmark data is exposed; all skeleton/connection rendering is
+handled by the application so the display stays clean.
+"""
+
 import mediapipe as mp
 
 
@@ -14,8 +17,6 @@ class HandTracker:
         min_tracking_confidence=0.7,
     ):
         self.mp_hands = mp.solutions.hands
-        self.mp_draw = mp.solutions.drawing_utils
-        self.mp_styles = mp.solutions.drawing_styles
         self.hands = self.mp_hands.Hands(
             static_image_mode=False,
             max_num_hands=max_hands,
@@ -34,20 +35,6 @@ class HandTracker:
         if index >= len(results.multi_hand_landmarks):
             return None
         return results.multi_hand_landmarks[index]
-
-    def draw_landmarks(self, frame, results):
-        """Overlay the hand skeleton and landmarks on a BGR frame."""
-        if not results.multi_hand_landmarks:
-            return frame
-        for hand_landmarks in results.multi_hand_landmarks:
-            self.mp_draw.draw_landmarks(
-                frame,
-                hand_landmarks,
-                self.mp_hands.HAND_CONNECTIONS,
-                self.mp_styles.get_default_hand_landmarks_style(),
-                self.mp_styles.get_default_hand_connections_style(),
-            )
-        return frame
 
     def close(self):
         self.hands.close()

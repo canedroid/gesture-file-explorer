@@ -14,8 +14,7 @@ def test_hand_tracker_processes_blank_frame():
         frame_rgb = np.zeros((480, 640, 3), dtype=np.uint8)
         results = tracker.find_hands(frame_rgb)
         assert results.multi_hand_landmarks is None
-        frame_bgr = frame_rgb[:, :, ::-1].copy()
-        tracker.draw_landmarks(frame_bgr, results)
+        assert tracker.get_landmarks(results) is None
     finally:
         tracker.close()
 
@@ -26,7 +25,6 @@ def test_hand_tracker_processes_noisy_frame():
         rng = np.random.default_rng(42)
         frame_rgb = rng.integers(0, 256, (480, 640, 3), dtype=np.uint8)
         results = tracker.find_hands(frame_rgb)
-        frame_bgr = frame_rgb[:, :, ::-1].copy()
-        tracker.draw_landmarks(frame_bgr, results)
+        assert tracker.get_landmarks(results, index=5) is None
     finally:
         tracker.close()

@@ -58,6 +58,37 @@ def test_scan_directory_raises_for_missing_dir(tmp_path):
         scan_directory(str(tmp_path / "does_not_exist"))
 
 
+def test_scan_directory_filters_system_sids_and_hidden(tmp_path):
+    (tmp_path / "$RECYCLE.BIN").mkdir()
+    (tmp_path / "S-1-5-18").mkdir()
+    (tmp_path / "S-1-5-21-3623811015-3361044348-30300820-1013").mkdir()
+    (tmp_path / "system volume information").mkdir()
+    (tmp_path / "windows").mkdir()
+    (tmp_path / "Program Files").mkdir()
+    (tmp_path / "Documents").mkdir()
+    (tmp_path / "notes.md").write_text("# n", encoding="utf-8")
+    (tmp_path / "hidden.cfg").write_text("secret", encoding="utf-8")
+
+    entries = scan_directory(str(tmp_path))
+    names = {e.name for e in entries}
+
+    for excluded in (
+        "$RECYCLE.BIN",
+        "S-1-5-18",
+        "S-1-5-21-3623811015-3361044348-30300820-1013",
+        "system volume information",
+        "windows",
+    ):
+        assert excluded not in names, excluded
+
+    assert "Program Files" in names
+    assert "Documents" in names
+    assert "notes.md" in names
+    assert not any(
+        e.is_file and e.name.startswith(".") for e in entries if e.is_file
+    )
+
+
 def test_read_text_file_returns_list_of_lines(tmp_path):
     target = tmp_path / "notes.md"
     target.write_text("# Title\n\nSome body text\n", encoding="utf-8")

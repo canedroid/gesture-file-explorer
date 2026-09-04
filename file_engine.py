@@ -1,10 +1,14 @@
 """File system engine: drive discovery, directory scanning, and safe readers.
 
-Pure backend logic used by the AR HUD. No OpenCV GUI code lives here so the
+Pure backend logic used by the AR HUD. No OpenCV GUI code lives here, so the
 engine stays testable without a display.
+
+Hidden files, system directories, and raw security identifier (SID) folders are
+filtered out so the HUD only presents clean, user-facing names.
 """
 
 import os
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +16,34 @@ from pathlib import Path
 SUPPORTED_EXTENSIONS = (".txt", ".md")
 
 _READ_ENCODINGS = ("utf-8-sig", "utf-8", "cp1252", "latin-1")
+
+# System directories that are never user-facing content and should stay hidden.
+_SYSTEM_NAMES = frozenset(
+    {
+        "$recycle.bin",
+        "$sysreset",
+        "$winreagent",
+        "$wpdatabase",
+        "$getcurrent",
+        "$windows.~bt",
+        "$windows.~ws",
+        "system volume information",
+        "windows",
+        "boot",
+        "recovery",
+        "perflogs",
+        "msocache",
+        "config.msi",
+        "windows.old",
+        "found.000",
+        "found.001",
+        "defaultuser0",
+    }
+)
+
+# Matches raw Windows security identifier folder names, e.g. S-1-5-18 or
+# S-1-5-21-3623811015-3361044348-30300820-1013.
+_SID_RE = re.compile(r"^S-\d+-\d+(-\d+){1,}(-\d+)?$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -48,6 +80,28 @@ def get_drives():
     return [os.path.abspath(os.sep)]
 
 
+def _is_hidden_entry(entry):
+    """Detect filesystem hidden status (Windows hidden attribute or dotfiles)."""
+    try:
+        if entry.is_hidden():
+            return True
+    except (AttributeError, OSError):
+        pass
+    if os.name != "nt" and entry.name.startswith("."):
+        return True
+    return False
+
+
+def _should_filter(name, entry):
+    """Return True when a scanned entry must stay out of the HUD list."""
+    lower = name.lower()
+    if lower in _SYSTEM_NAMES or lower.startswith("$"):
+        return True
+    if _SID_RE.match(lower):
+        return True
+    return _is_hidden_entry(entry)
+
+
 def scanned_key(entry):
     """Sort directories before files, then case-insensitively by name."""
     return (entry.is_dir is False, entry.name.lower())
@@ -55,6 +109,8 @@ def scanned_key(entry):
 
 def scan_directory(path):
     """List folders and supported text/markdown files inside ``path``.
+
+    System directories, hidden entries, and raw SID folders are filtered out.
 
     Raises:
         PermissionError: when the directory cannot be accessed or listed.
@@ -79,6 +135,8 @@ def scan_directory(path):
         try:
             is_dir = item.is_dir()
         except OSError:
+            continue
+        if _should_filter(item.name, item):
             continue
         if is_dir:
             entries.append(FileEntry(name=item.name, path=item.path, is_dir=True))

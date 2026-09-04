@@ -5,6 +5,7 @@ resolves pinch activations against the HUD hover position, and keeps the UI
 layer free of filesystem knowledge.
 """
 
+import os
 from enum import Enum, auto
 
 from file_engine import FileEntry, get_drives, read_text_file, scan_directory
@@ -45,10 +46,26 @@ class ExplorerApp:
     @property
     def directory_label(self):
         if self.state is ViewState.ROOT:
-            return "This PC"
+            return "THIS PC"
         if self.state is ViewState.FILE_VIEW:
-            return self.file_name or "[ FILE VIEW ]"
-        return self.current_path or "[ ROOT ]"
+            return self.file_name or "[ FILE ]"
+        return self.current_path or "[ THIS PC ]"
+
+    @property
+    def friendly_label(self):
+        """Human-friendly header for the current location."""
+        if self.state is ViewState.ROOT:
+            return "THIS PC"
+        if self.state is ViewState.FILE_VIEW:
+            return f"READING // {self.file_name or 'FILE'}"
+        path = self.current_path or ""
+        if not path:
+            return "THIS PC"
+        stripped = path.rstrip("\\/")
+        if len(stripped) == 2 and stripped[1] == ":":
+            return f"DRIVE: {stripped[0]}://"  # e.g. DRIVE: D://
+        name = os.path.basename(stripped) or stripped
+        return f"DIR: {name}"
 
     @property
     def is_file_view(self):

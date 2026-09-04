@@ -13,7 +13,6 @@ def run_frame_pipeline(tracker, cursor, frame_bgr, app, hud, pinch_index=None):
     frame = cv2_flip(frame_bgr)
     rgb = frame[:, :, ::-1].copy()
     results = tracker.find_hands(rgb)
-    tracker.draw_landmarks(frame, results)
 
     height, width = frame.shape[:2]
     landmarks = tracker.get_landmarks(results)

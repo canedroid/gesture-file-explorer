@@ -142,3 +142,17 @@ def test_hud_render_text_pager_visible_for_long_document():
     assert hud.last_text_rows >= 1
     assert hud.scroll_up_rect is not None
     assert hud.scroll_down_rect is not None
+
+
+def test_hud_visible_rows_capped_at_six():
+    frame = np.zeros((FRAME_H, FRAME_W, 3), dtype=np.uint8)
+    hud = HUD()
+    hud.render(
+        frame,
+        "T",
+        "THIS PC",
+        many_entries(200),
+        cursor=FakeCursor(500, hud.row_height * 20),
+    )
+    assert hud.visible_rows <= 6
+    assert hud.visible_rows >= 1
