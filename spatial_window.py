@@ -18,14 +18,17 @@ STATE_OPEN = "open"
 STATE_DRAGGING = "dragging"
 STATE_CLOSING = "closing"
 
-TITLE_BAR_H = 46
-CLOSE_BTN_W = 26
-CLOSE_BTN_MARGIN = 10
-PAD = 14
-ROW_H = 34
-LIST_TOP_OFFSET = TITLE_BAR_H + 14
-FOOTER_H = 40
+TITLE_BAR_H = 50
+CLOSE_BTN_W = 30
+CLOSE_BTN_MARGIN = 12
+PAD = 18
+ROW_H = 46
+LIST_TOP_OFFSET = TITLE_BAR_H + 18
+FOOTER_H = 46
 PAGER_H = 24
+
+CONTENT_FONT = cv2.FONT_HERSHEY_COMPLEX
+CONTENT_SCALE = 0.5
 
 MIN_W, MAX_W = 600, 1180
 MIN_H, MAX_H = 400, 840
@@ -95,9 +98,9 @@ def compute_window_layout(win, frame_w, frame_h):
     title_bar = (x0, y0, x1, y0 + TITLE_BAR_H)
     close_button = (
         x1 - CLOSE_BTN_W - CLOSE_BTN_MARGIN,
-        y0 + 9,
+        y0 + 10,
         x1 - CLOSE_BTN_MARGIN,
-        y0 + TITLE_BAR_H - 9,
+        y0 + TITLE_BAR_H - 10,
     )
     list_left = x0 + PAD
     list_right = x1 - PAD
@@ -185,10 +188,9 @@ def wrap_text_line(text, max_px, font, scale, thickness):
 def wrap_lines(lines, card_width):
     """Wrap document lines to fit a floating card's content width."""
     max_px = max(80, card_width - PAD * 2 - 16)
-    font = cv2.FONT_HERSHEY_SIMPLEX
     wrapped = []
     for raw in lines:
-        wrapped.extend(wrap_text_line(raw, max_px, font, 0.5, 1))
+        wrapped.extend(wrap_text_line(raw, max_px, CONTENT_FONT, CONTENT_SCALE, 1))
     return wrapped
 
 

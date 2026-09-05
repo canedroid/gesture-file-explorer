@@ -10,6 +10,7 @@ skeleton so the display stays uncluttered.
 
 import math
 import time
+from collections import deque
 
 import cv2
 import numpy as np
@@ -48,6 +49,8 @@ class Cursor:
         self.is_clamped = False
         self.clamp_distance = float("inf")
 
+        self._trail = deque(maxlen=9)
+
         self._hold_counter = 0
         self._pinch_started = False
         self._was_pinched = False
@@ -76,6 +79,7 @@ class Cursor:
             self._was_pinched = False
             self._clamp_hold_counter = 0
             self._was_clamped = False
+            self._trail.clear()
             return self
 
         index = landmarks.landmark[INDEX_TIP_LANDMARK]
@@ -89,6 +93,7 @@ class Cursor:
         self.x = index_px[0]
         self.y = index_px[1]
         self.visible = True
+        self._trail.append((self.x, self.y))
         self.pinch_distance = math.dist(index_px, thumb_px)
         self.clamp_distance = math.dist(thumb_px, middle_px)
 
@@ -163,13 +168,27 @@ class Cursor:
         )
 
     def draw(self, frame):
-        """Draw a minimal glowing target reticle onto a BGR frame."""
+        """Draw a glowing targeting reticle with a smooth trailing halo."""
         if not self.visible:
             return frame
 
         cx, cy = int(round(self.x)), int(round(self.y))
         color = RETICLE_AMBER if self.is_pinched else RETICLE_CYAN
         pulse = 0.5 + 0.5 * math.sin(time.time() * 5.0)
+
+        # Smooth comet trail: faint, small orbs fading with age.
+        n = len(self._trail)
+        for i, (px, py) in enumerate(self._trail):
+            if px == self.x and py == self.y:
+                continue
+            f = (i + 1) / n
+            self._glow(
+                frame,
+                (int(round(px)), int(round(py))),
+                int(7 + 15 * f),
+                RETICLE_GLOW,
+                0.05 + 0.11 * f * pulse,
+            )
 
         if self.is_pinched:
             self._glow(frame, (cx, cy), 34, (0, 40, 120), 0.45 + 0.15 * pulse)
