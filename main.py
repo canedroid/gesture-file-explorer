@@ -1,27 +1,37 @@
-"""Gesture-Controlled Virtual AR File Explorer - entry point."""
+"""Gesture-Controlled Spatial HUD File Explorer - entry point.
+
+Runs the full loop: camera capture, up to two virtual cursors, a window
+manager owning independent floating cards, and the holographic renderer.
+"""
 
 import cv2
 
-from app import ExplorerApp
 from camera import Camera
 from gesture_control import Cursor
 from hand_tracker import HandTracker
-from ui_overlay import HUD
+from spatial_window import STATE_DRAGGING
+from window_manager import WindowManager
+from window_renderer import WindowRenderer
+
+WINDOW_NAME = "Gesture Spatial File Explorer"
 
 
 def main():
     camera = Camera()
-    tracker = HandTracker()
-    cursor = Cursor()
-    hud = HUD()
-    app = ExplorerApp()
+    tracker = HandTracker(max_hands=2)
+    cursors = [Cursor(), Cursor()]
+    manager = WindowManager()
+    renderer = WindowRenderer()
+    labels = ["HAND-1", "HAND-2"]
 
-    window_name = "Gesture File Explorer"
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    manager.spawn_drives_card()
+
+    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
 
     try:
-        total_rows = 0
-        visible_rows = 0
+        prev = {}
+        vel = {}
+        drag_owner = {}
         while True:
             frame = camera.read()
             if frame is None:
@@ -29,116 +39,130 @@ def main():
                 continue
 
             try:
-                # Mirror horizontally for a natural selfie-style view.
                 frame = cv2.flip(frame, 1)
-
-                # Convert BGR to RGB for MediaPipe processing.
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
                 results = tracker.find_hands(rgb_frame)
-
                 height, width = frame.shape[:2]
-                landmarks = tracker.get_landmarks(results)
-                cursor.update(landmarks, width, height)
+                manager.set_viewport(width, height)
 
-                if app.is_file_view:
-                    total_rows = app._wrapped_count
+                hands = tracker.get_hands(results)
+                for i, cursor in enumerate(cursors):
+                    if i < len(hands):
+                        label, landmarks = hands[i]
+                        labels[i] = label
+                        cursor.update(landmarks, width, height)
+                    else:
+                        cursor.update(None, width, height)
+                order = [i for i, c in enumerate(cursors) if c.visible]
+
+                # -- per-frame cursor velocity ---------------------------------
+                for i, cursor in enumerate(cursors):
+                    if cursor.visible:
+                        px, py = prev.get(i, (cursor.x, cursor.y))
+                        vel[i] = (cursor.x - px, cursor.y - py)
+                        prev[i] = (cursor.x, cursor.y)
+                    else:
+                        prev.pop(i, None)
+                        vel.pop(i, None)
+
+                # -- dismiss via thumb-middle clamp ---------------------------
+                for i in order:
+                    if cursors[i].clamp_started:
+                        win = manager.topmost_at(cursors[i].x, cursors[i].y)
+                        if win is not None:
+                            manager.close_window(win)
+
+                # -- two-hand pinch scaling (takes priority) -------------------
+                resize_win = None
+                if (
+                    len(order) == 2
+                    and cursors[order[0]].is_pinched
+                    and cursors[order[1]].is_pinched
+                    and _same_window(manager, cursors[order[0]], cursors[order[1]])
+                ):
+                    resize_win = manager.topmost_at(
+                        cursors[order[0]].x, cursors[order[0]].y
+                    )
+                if resize_win is not None:
+                    a, b = cursors[order[0]], cursors[order[1]]
+                    manager.apply_resize(resize_win, a.x, a.y, b.x, b.y)
                 else:
-                    total_rows = len(app.entries)
-                visible_rows = hud.visible_rows
-                page = max(1, visible_rows)
+                    manager.end_all_resizes()
 
-                # Pager button pinch.
-                button = (
-                    hud.pager_button_at(cursor.x, cursor.y)
-                    if cursor.visible
-                    else None
+                # -- pinch start: resolve actions ------------------------------
+                if resize_win is None:
+                    for i in order:
+                        if cursors[i].pinch_started:
+                            win = manager.topmost_at(cursors[i].x, cursors[i].y)
+                            if win is not None:
+                                action = manager.handle_pinch_start(
+                                    win, cursors[i].x, cursors[i].y
+                                )
+                                if action["kind"] == "drag":
+                                    drag_owner[i] = win
+                                else:
+                                    drag_owner.pop(i, None)
+                            break
+
+                # -- sustained drag following -------------------------------
+                for i in order:
+                    cursor = cursors[i]
+                    if not cursor.is_pinched:
+                        continue
+                    win = manager.topmost_at(cursor.x, cursor.y)
+                    if win is None or win.state != STATE_DRAGGING:
+                        continue
+                    drag_owner[i] = win
+                    dx, dy = vel.get(i, (0.0, 0.0))
+                    manager.move_drag(win, cursor.x, cursor.y, dx, dy)
+
+                # -- release: flick closes, otherwise settle -----------------
+                for i in range(len(cursors)):
+                    cursor = cursors[i]
+                    if not cursor.visible or cursor.is_pinched:
+                        continue
+                    vx, vy = vel.get(i, (0.0, 0.0))
+                    win = drag_owner.pop(i, None)
+                    if win is not None and win.state == STATE_DRAGGING:
+                        manager.release_drag(win, vx, vy)
+
+                manager.step_closing()
+
+                # -- render -----------------------------------------------------
+                renderer.render(frame, manager, cursors)
+                for i in order:
+                    cursors[i].draw(frame)
+
+                status = (
+                    "+".join(labels[i] for i in order) if order else "NO HAND"
                 )
-                if cursor.pinch_started and button:
-                    delta = -page if button == "up" else page
-                    app.scroll_page(delta, total_rows, visible_rows)
-                    app.end_drag()
-                elif cursor.pinch_started:
-                    hover = hud.hovered_index(cursor, width, height)
-                    if hover is not None:
-                        if app.is_file_view:
-                            if hover == 0:
-                                app.activate_index(0)
-                                app.end_drag()
-                        else:
-                            app.activate_index(app.scroll_offset + hover)
-                            app.end_drag()
-
-                # Pinch-drag scrolling inside the file viewer content area.
-                hover = hud.hovered_index(cursor, width, height)
-                dragging_area = app.is_file_view and hover is not None and hover > 0
-                if cursor.is_pinched and dragging_area:
-                    app.drag_to(
-                        cursor.y,
-                        max(1, hud.row_height - 18),
-                        app._wrapped_count,
-                        hud.visible_rows,
-                    )
-                else:
-                    app.end_drag()
-
-                if app.is_file_view:
-                    wrapped_count = hud.render_text(
-                        frame,
-                        "FILE VIEW",
-                        app.friendly_label,
-                        app.lines,
-                        scroll_line=app.scroll_offset,
-                        cursor=cursor,
-                    )[1]
-                    app._wrapped_count = wrapped_count
-                    if app.scroll_offset > max(
-                        0, wrapped_count - hud.visible_rows
-                    ):
-                        app.scroll_to(
-                            app.scroll_offset,
-                            wrapped_count,
-                            hud.visible_rows,
-                        )
-                else:
-                    hud.render(
-                        frame,
-                        "GESTURE FILE EXPLORER",
-                        app.friendly_label,
-                        app.entries,
-                        cursor=cursor,
-                        scroll_offset=app.scroll_offset,
-                        item_suffix=f"{len(app.entries):03d} ENTRIES",
-                    )
-
-                if app.error_message:
-                    cv2.putText(
-                        frame,
-                        "ERR: " + app.error_message[:70],
-                        (20, 40),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.6,
-                        (0, 0, 255),
-                        1,
-                        cv2.LINE_AA,
-                    )
-
-                cursor.draw(frame)
+                cv2.putText(
+                    frame,
+                    status,
+                    (15, 25),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    (255, 240, 0),
+                    1,
+                    cv2.LINE_AA,
+                )
             except Exception as exc:
                 print(f"[error] frame pipeline failed: {exc}")
 
-            cv2.imshow(window_name, frame)
+            cv2.imshow(WINDOW_NAME, frame)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
                 break
-            if key == ord("w"):
-                app.scroll_page(-page, total_rows, visible_rows)
-            elif key == ord("s"):
-                app.scroll_page(page, total_rows, visible_rows)
     finally:
         tracker.close()
         camera.release()
         cv2.destroyAllWindows()
+
+
+def _same_window(manager, a, b):
+    win_a = manager.topmost_at(a.x, a.y)
+    win_b = manager.topmost_at(b.x, b.y)
+    return win_a is not None and win_a is win_b
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ def test_hand_tracker_processes_blank_frame():
         results = tracker.find_hands(frame_rgb)
         assert results.multi_hand_landmarks is None
         assert tracker.get_landmarks(results) is None
+        assert tracker.get_hands(results) == []
     finally:
         tracker.close()
 
@@ -26,5 +27,17 @@ def test_hand_tracker_processes_noisy_frame():
         frame_rgb = rng.integers(0, 256, (480, 640, 3), dtype=np.uint8)
         results = tracker.find_hands(frame_rgb)
         assert tracker.get_landmarks(results, index=5) is None
+        assert tracker.get_hands(results) == []
+    finally:
+        tracker.close()
+
+
+def test_hand_tracker_supports_two_hands():
+    tracker = HandTracker(max_hands=2)
+    try:
+        frame_rgb = np.zeros((480, 640, 3), dtype=np.uint8)
+        results = tracker.find_hands(frame_rgb)
+        assert results is not None
+        assert tracker.get_hands(results) == []
     finally:
         tracker.close()
