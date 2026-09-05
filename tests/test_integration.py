@@ -55,7 +55,7 @@ def test_blank_frames_keep_pipeline_stable(tmp_path):
         tracker.close()
 
 
-def test_render_directory_card_draws_cyan_seam():
+def test_render_directory_card_draws_grayscale_seam():
     manager = WindowManager()
     manager.set_viewport(FRAME_W, FRAME_H)
     win = manager.spawn_drives_card()
@@ -69,6 +69,22 @@ def test_render_directory_card_draws_cyan_seam():
         for x in range(layout.x0 + 12, layout.x1 - 12, 3)
     )
     assert found
+
+
+def test_rendered_accent_palette_is_grayscale():
+    # The reference video's UI reads as translucent monochrome glass; the
+    # chrome must contain almost no saturated cyan or amber pixels.
+    manager = WindowManager()
+    manager.set_viewport(FRAME_W, FRAME_H)
+    manager.spawn_drives_card()
+    renderer = WindowRenderer()
+    frame = np.zeros((FRAME_H, FRAME_W, 3), dtype=np.uint8)
+    renderer.render(frame, manager, [])
+    b, g, r = (frame[:, :, i].astype(np.int16) for i in (0, 1, 2))
+    saturated_cyan = int(((b > 130) & (g > 120) & (r < 90) & (b > r)).sum())
+    saturated_amber = int(((r > 130) & (g > 120) & (b < 90) & (r > g)).sum())
+    assert saturated_cyan < 50, saturated_cyan
+    assert saturated_amber < 50, saturated_amber
 
 
 def test_render_text_card_stays_inside_card():

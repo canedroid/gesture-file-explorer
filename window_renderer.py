@@ -1,10 +1,10 @@
 """High-end sci-fi glassmorphism rendering for the spatial HUD.
 
 Implements the Jarvis-style design system: translucent navy glass panels with
-a vertical depth gradient, multi-layered rounded glowing cyan tech borders with
-amber corner brackets, a polished header with a pulsing status indicator and a
+a vertical depth gradient, multi-layered rounded glowing GRAY_CORE tech borders with
+GRAY_AMBER corner brackets, a polished header with a pulsing status indicator and a
 pill-backed close button, backing-card list rows with subtle zebra striping and
-a cyan hover tint, and a clean footer with glow pagination controls.
+a GRAY_CORE hover tint, and a clean footer with glow pagination controls.
 """
 
 import math
@@ -19,25 +19,28 @@ from spatial_window import (
     STATE_CLOSING,
     STATE_DRAGGING,
     TITLE_BAR_H,
+    dotted_title,
     wrap_lines,
 )
 
 # ---- palette --------------------------------------------------------------
-CYAN = (255, 229, 0)            # #00E5FF
-CYAN_SOFT = (200, 210, 40)      # muted cyan
-CYAN_MID = (150, 180, 20)       # cyan glow mid layer
-CYAN_DEEP = (70, 100, 30)       # cyan glow base layer
-AMBER = (0, 179, 255)           # #FFB300
-AMBER_BRIGHT = (110, 225, 255)  # warm highlight
-TEXT = (240, 248, 255)
-DIM = (150, 180, 195)
-SHADOW = (6, 10, 18)
+# Monochrome "hologram" ramp: ivory highlights over warm silver and soft
+# grays, so the interface reads as translucent glass instead of neon wireframe.
+GRAY_CORE = (252, 252, 250)         # hot ivory core / crisp edge
+GRAY_BRIGHT = (238, 238, 235)       # bright accent highlight
+GRAY_SOFT = (206, 206, 202)         # soft accent / non-focus state
+GRAY_AMBER = (168, 168, 164)        # warm silver accent
+GRAY_MID = (150, 150, 148)          # glow mid layer
+GRAY_DEEP = (70, 70, 72)            # glow base layer
+TEXT = (243, 245, 245)
+DIM = (152, 152, 152)
+SHADOW = (8, 12, 16)
 RED = (70, 70, 255)
-WHITE = (245, 250, 255)
-PANEL_TOP = (58, 36, 24)        # lighter navy (top glass tint)
-PANEL_BOT = (32, 17, 12)        # deeper navy (bottom glass tint)
-ROW_TINT = (150, 205, 90)       # semi-transparent cyan-white for hover
-ZEBRA = (245, 250, 255)
+WHITE = (252, 253, 253)
+PANEL_TOP = (46, 46, 48)            # lighter charcoal glass (top tint)
+PANEL_BOT = (26, 26, 28)            # deeper charcoal glass (bottom tint)
+ROW_TINT = (235, 235, 230)          # semi-transparent ivory hover backing
+ZEBRA = (240, 241, 241)
 
 # ---- typography -----------------------------------------------------------
 TITLE_FONT = cv2.FONT_HERSHEY_TRIPLEX
@@ -46,7 +49,7 @@ TITLE_SCALE = 0.55
 BODY_SCALE = 0.5
 SMALL_SCALE = 0.42
 
-PANEL_ALPHA = 0.75
+PANEL_ALPHA = 0.2
 HOVER_ALPHA = 0.32
 CORNER_ARM = 18
 CORNER_OFF = 7
@@ -111,28 +114,28 @@ class WindowRenderer:
         path = _rounded_path(x0, y0, x1, y1, RAD)
         if k <= 0.02:
             cv2.polylines(
-                frame, [path], True, _shade(CYAN_MID, k), 1, cv2.LINE_AA
+                frame, [path], True, _shade(GRAY_MID, k), 1, cv2.LINE_AA
             )
             return
 
         # Layered glow: wide dark base, mid bloom, crisp edge, hot core.
         if is_focus:
-            cv2.polylines(frame, [path], True, _shade(CYAN_DEEP, k), 9, cv2.LINE_AA)
-            cv2.polylines(frame, [path], True, _shade(CYAN_MID, k), 6, cv2.LINE_AA)
-            cv2.polylines(frame, [path], True, _shade(CYAN, k), 3, cv2.LINE_AA)
+            cv2.polylines(frame, [path], True, _shade(GRAY_DEEP, k), 9, cv2.LINE_AA)
+            cv2.polylines(frame, [path], True, _shade(GRAY_MID, k), 6, cv2.LINE_AA)
+            cv2.polylines(frame, [path], True, _shade(GRAY_CORE, k), 3, cv2.LINE_AA)
             cv2.polylines(frame, [path], True, _shade(WHITE, k), 1, cv2.LINE_AA)
         else:
-            cv2.polylines(frame, [path], True, _shade(CYAN_DEEP, k), 6, cv2.LINE_AA)
-            cv2.polylines(frame, [path], True, _shade(CYAN_SOFT, k), 2, cv2.LINE_AA)
-            cv2.polylines(frame, [path], True, _shade(CYAN_MID, k), 1, cv2.LINE_AA)
+            cv2.polylines(frame, [path], True, _shade(GRAY_DEEP, k), 6, cv2.LINE_AA)
+            cv2.polylines(frame, [path], True, _shade(GRAY_SOFT, k), 2, cv2.LINE_AA)
+            cv2.polylines(frame, [path], True, _shade(GRAY_MID, k), 1, cv2.LINE_AA)
 
         self._draw_corners(frame, x0, y0, x1, y1, k, is_focus)
 
     def _draw_corners(self, frame, x0, y0, x1, y1, k, is_focus):
         off = CORNER_OFF
         arm = CORNER_ARM
-        color = _shade(AMBER_BRIGHT if is_focus else AMBER, k)
-        soft = _shade(AMBER, k)
+        color = _shade(GRAY_BRIGHT if is_focus else GRAY_AMBER, k)
+        soft = _shade(GRAY_AMBER, k)
         coords = (
             (x0, y0, 1, 1),
             (x1, y0, -1, 1),
@@ -140,12 +143,12 @@ class WindowRenderer:
             (x1, y1, -1, -1),
         )
         for cx, cy, sx, sy in coords:
-            # Ambient glow underlay then crisp amber ticks.
+            # Ambient glow underlay then crisp GRAY_AMBER ticks.
             cv2.line(
                 frame,
                 (cx + sx * (off - 1), cy + sy * (off + 1)),
                 (cx + sx * (off + arm), cy + sy * (off + 1)),
-                _shade(AMBER, k * 0.45),
+                _shade(GRAY_AMBER, k * 0.45),
                 3,
                 cv2.LINE_AA,
             )
@@ -153,7 +156,7 @@ class WindowRenderer:
                 frame,
                 (cx + sx * (off + 1), cy + sy * (off - 1)),
                 (cx + sx * (off + 1), cy + sy * (off + arm)),
-                _shade(AMBER, k * 0.45),
+                _shade(GRAY_AMBER, k * 0.45),
                 3,
                 cv2.LINE_AA,
             )
@@ -188,7 +191,7 @@ class WindowRenderer:
         pulse = 0.5 + 0.5 * math.sin(t * 5.0)
         dragging = win.state == STATE_DRAGGING
 
-        # Glowing amber accent bar docked to the far-left edge (vertical).
+        # Glowing GRAY_AMBER accent bar docked to the far-left edge (vertical).
         accent_x = ACCCENT_X + x0
         accent_y0 = y0 + 11
         accent_y1 = y0 + TITLE_BAR_H - 13
@@ -196,7 +199,7 @@ class WindowRenderer:
             frame,
             (accent_x, accent_y0),
             (accent_x, accent_y1),
-            _shade(AMBER, k * 0.5),
+            _shade(GRAY_AMBER, k * 0.5),
             4,
             cv2.LINE_AA,
         )
@@ -204,7 +207,7 @@ class WindowRenderer:
             frame,
             (accent_x, accent_y0),
             (accent_x, accent_y1),
-            _shade(AMBER_BRIGHT, k),
+            _shade(GRAY_BRIGHT, k),
             2,
             cv2.LINE_AA,
         )
@@ -212,19 +215,21 @@ class WindowRenderer:
         # Pulsing status indicator dot.
         dot_c = (STATUS_X + x0, y0 + STATUS_CY)
         dot_color = (
-            _shade(AMBER_BRIGHT, k)
+            _shade(GRAY_BRIGHT, k)
             if dragging
-            else _shade(CYAN if is_focus else CYAN_SOFT, k)
+            else _shade(GRAY_CORE if is_focus else GRAY_SOFT, k)
         )
         glow_r = int(9 + 3 * pulse)
         cv2.circle(frame, dot_c, glow_r + 4, _shade(dot_color, 0.18 * k), -1, cv2.LINE_AA)
         cv2.circle(frame, dot_c, 7, _shade(dot_color, 0.4 * k), -1, cv2.LINE_AA)
         cv2.circle(frame, dot_c, 4, _shade(dot_color, k), -1, cv2.LINE_AA)
 
-        # Bold tracked title.
+# Bold tracked title; the focused (topmost) card uses the reference's
+        # dot-spaced logo treatment, everyone else keeps a clean title.
         title_x = x0 + TITLE_X
         reserved = layout.close_button[0] - title_x - 14
-        title = _fit(win.title, max(60, reserved), TITLE_FONT, TITLE_SCALE)
+        display_title = dotted_title(win.title) if is_focus else win.title
+        title = _fit(display_title, max(60, reserved), TITLE_FONT, TITLE_SCALE)
         self._text(
             frame,
             title,
@@ -243,7 +248,7 @@ class WindowRenderer:
                 tag,
                 (title_x + tw + 12, y0 + 20),
                 SMALL_SCALE,
-                _shade(AMBER_BRIGHT, k),
+                _shade(GRAY_BRIGHT, k),
                 font=BODY_FONT,
             )
 
@@ -251,17 +256,17 @@ class WindowRenderer:
         ux = title_x
         ux2 = min(layout.close_button[0] - 14, ux + tw + 6)
         uy = y0 + TITLE_UNDERLINE_Y
-        cv2.line(frame, (ux, uy), (ux2, uy), _shade(AMBER, k * 0.5), 3, cv2.LINE_AA)
-        cv2.line(frame, (ux, uy), (ux2, uy), _shade(AMBER_BRIGHT, k), 1, cv2.LINE_AA)
+        cv2.line(frame, (ux, uy), (ux2, uy), _shade(GRAY_AMBER, k * 0.5), 3, cv2.LINE_AA)
+        cv2.line(frame, (ux, uy), (ux2, uy), _shade(GRAY_BRIGHT, k), 1, cv2.LINE_AA)
 
-        # Divider seam with a travelling energy pulse (cyan signature line).
+        # Divider seam with a travelling energy pulse (GRAY_CORE signature line).
         seam_y = y0 + TITLE_BAR_H - 4
-        cv2.line(frame, (x0 + 8, seam_y), (x1 - 8, seam_y), _shade(CYAN, k), 1, cv2.LINE_AA)
+        cv2.line(frame, (x0 + 8, seam_y), (x1 - 8, seam_y), _shade(GRAY_CORE, k), 1, cv2.LINE_AA)
         cv2.line(frame, (x0 + 8, seam_y + 1), (x1 - 8, seam_y + 1), _shade(SHADOW, k), 1)
         if k > 0.2:
             dot_x = x0 + 10 + int(((t * 0.3) % 1.0) * (x1 - x0 - 20))
-            cv2.circle(frame, (dot_x, seam_y), 3, _shade(AMBER_BRIGHT, k), -1, cv2.LINE_AA)
-            cv2.circle(frame, (dot_x, seam_y), 6, _shade(AMBER, k * 0.6), 1, cv2.LINE_AA)
+            cv2.circle(frame, (dot_x, seam_y), 3, _shade(GRAY_BRIGHT, k), -1, cv2.LINE_AA)
+            cv2.circle(frame, (dot_x, seam_y), 6, _shade(GRAY_AMBER, k * 0.6), 1, cv2.LINE_AA)
 
         self._draw_close_button(frame, layout, cursors, k)
 
@@ -270,15 +275,15 @@ class WindowRenderer:
         hovered = bool(_cursor_hover_rect(cursors, cb))
         path = _rounded_path(cb[0], cb[1], cb[2], cb[3], 12)
         if hovered and k > 0.2:
-            _blend_shape(frame, cb, AMBER, 0.30, 12)
-            cv2.polylines(frame, [path], True, AMBER_BRIGHT, 2, cv2.LINE_AA)
+            _blend_shape(frame, cb, GRAY_AMBER, 0.30, 12)
+            cv2.polylines(frame, [path], True, GRAY_BRIGHT, 2, cv2.LINE_AA)
         else:
             _blend_shape(frame, cb, WHITE, 0.09, 12)
-            cv2.polylines(frame, [path], True, _shade(CYAN_SOFT, k), 1, cv2.LINE_AA)
+            cv2.polylines(frame, [path], True, _shade(GRAY_SOFT, k), 1, cv2.LINE_AA)
         cx = (cb[0] + cb[2]) // 2
         cy = (cb[1] + cb[3]) // 2
         pad = 5
-        color = AMBER_BRIGHT if hovered else _shade(AMBER, k)
+        color = GRAY_BRIGHT if hovered else _shade(GRAY_AMBER, k)
         cv2.line(frame, (cx - pad, cy - pad), (cx + pad, cy + pad), color, 2, cv2.LINE_AA)
         cv2.line(frame, (cx + pad, cy - pad), (cx - pad, cy + pad), color, 2, cv2.LINE_AA)
 
@@ -307,11 +312,11 @@ class WindowRenderer:
             pulse = 0.5 + 0.5 * math.sin(t * 6.0)
             _blend_shape(frame, card, ROW_TINT, HOVER_ALPHA + 0.12 * pulse, ROW_RAD)
             hpath = _rounded_path(*card, ROW_RAD)
-            cv2.polylines(frame, [hpath], True, _shade(CYAN, k), 3, cv2.LINE_AA)
+            cv2.polylines(frame, [hpath], True, _shade(GRAY_CORE, k), 3, cv2.LINE_AA)
             cv2.polylines(frame, [hpath], True, _shade(WHITE, k), 1, cv2.LINE_AA)
-            # Amber left accent rail.
+            # GRAY_AMBER left accent rail.
             cv2.line(frame, (card[0] + 3, card[1] + 5), (card[0] + 3, card[3] - 5),
-                     AMBER_BRIGHT, 2, cv2.LINE_AA)
+                     GRAY_BRIGHT, 2, cv2.LINE_AA)
         else:
             alpha = 0.055 if screen_index % 2 == 0 else 0.022
             _blend_shape(frame, card, ZEBRA, alpha, ROW_RAD)
@@ -325,7 +330,7 @@ class WindowRenderer:
             return
         if item.name == "..":
             self._text(frame, "<", (text_left, baseline), BODY_SCALE,
-                       _shade(AMBER_BRIGHT, k), font=BODY_FONT)
+                       _shade(GRAY_BRIGHT, k), font=BODY_FONT)
             self._text(frame, "PARENT", (text_left + 22, baseline), SMALL_SCALE,
                        _shade(DIM, k), font=BODY_FONT)
             return
@@ -336,7 +341,7 @@ class WindowRenderer:
             name,
             (text_left, baseline),
             BODY_SCALE,
-            _shade(AMBER_BRIGHT if hovered else AMBER, k),
+            _shade(GRAY_BRIGHT if hovered else GRAY_AMBER, k),
             font=BODY_FONT,
             shadow=True,
         )
@@ -345,20 +350,20 @@ class WindowRenderer:
         tile = (x0 + ICON_TILE_L, cy - 13, x0 + ICON_TILE_R, cy + 13)
         itp = _rounded_path(*tile, 9)
         _blend_shape(frame, tile, WHITE, 0.07, 9)
-        cv2.polylines(frame, [itp], True, _shade(CYAN_MID, k), 1, cv2.LINE_AA)
+        cv2.polylines(frame, [itp], True, _shade(GRAY_MID, k), 1, cv2.LINE_AA)
         if item.is_dir:
             cv2.putText(
                 frame, ">", (tile[0] + 8, cy + 5),
-                cv2.FONT_HERSHEY_COMPLEX, 0.62, _shade(AMBER, k),
+                cv2.FONT_HERSHEY_COMPLEX, 0.62, _shade(GRAY_AMBER, k),
                 2, cv2.LINE_AA,
             )
         else:
             # Document glyph: rounded sheet with a folded corner.
             gx0, gx1 = tile[0] + 6, tile[2] - 6
             gy0, gy1 = cy - 9, cy + 10
-            cv2.rectangle(frame, (gx0, gy0), (gx1, gy1), _shade(CYAN, k), 1, cv2.LINE_AA)
-            cv2.line(frame, (gx0, gy0 + 6), (gx1, gy0 + 6), _shade(CYAN, k), 1, cv2.LINE_AA)
-            cv2.line(frame, (gx0, gy0 + 12), (gx1, gy0 + 12), _shade(CYAN, k), 1, cv2.LINE_AA)
+            cv2.rectangle(frame, (gx0, gy0), (gx1, gy1), _shade(GRAY_CORE, k), 1, cv2.LINE_AA)
+            cv2.line(frame, (gx0, gy0 + 6), (gx1, gy0 + 6), _shade(GRAY_CORE, k), 1, cv2.LINE_AA)
+            cv2.line(frame, (gx0, gy0 + 12), (gx1, gy0 + 12), _shade(GRAY_CORE, k), 1, cv2.LINE_AA)
 
     def _draw_file_row(self, frame, item, text_left, text_right, baseline, hovered, k):
         dot = item.name.rfind(".")
@@ -369,7 +374,7 @@ class WindowRenderer:
             bw = _width(badge, BODY_FONT, SMALL_SCALE)
             badge_x = text_right - bw - 8
             self._text(frame, badge, (badge_x, baseline - 4), SMALL_SCALE,
-                       _shade(CYAN_SOFT, k), font=BODY_FONT)
+                       _shade(GRAY_SOFT, k), font=BODY_FONT)
         name_max = max(40, badge_x - text_left - 14)
         self._text(frame, _fit(item.name, name_max, BODY_FONT, BODY_SCALE),
                    (text_left, baseline), BODY_SCALE,
@@ -393,11 +398,11 @@ class WindowRenderer:
             stripped = line.lstrip()
             color = TEXT
             if stripped.startswith("#"):
-                color = AMBER_BRIGHT
+                color = GRAY_BRIGHT
             elif stripped.startswith(("-", "*", "+", ">")) or stripped.startswith(
                 ("1.", "2.", "3.")
             ):
-                color = CYAN
+                color = GRAY_CORE
             if stripped:
                 self._text(frame, _fit(line, max_w, BODY_FONT, BODY_SCALE),
                            (content_left, y), BODY_SCALE, _shade(color, k),
@@ -424,15 +429,15 @@ class WindowRenderer:
         ):
             path = _rounded_path(rect[0], rect[1], rect[2], rect[3], 8)
             if hovered:
-                _blend_shape(frame, rect, AMBER, 0.28, 8)
-                cv2.polylines(frame, [path], True, AMBER_BRIGHT, 2, cv2.LINE_AA)
+                _blend_shape(frame, rect, GRAY_AMBER, 0.28, 8)
+                cv2.polylines(frame, [path], True, GRAY_BRIGHT, 2, cv2.LINE_AA)
             else:
                 _blend_shape(frame, rect, WHITE, 0.07, 8)
-                cv2.polylines(frame, [path], True, _shade(CYAN_SOFT, k), 1, cv2.LINE_AA)
+                cv2.polylines(frame, [path], True, _shade(GRAY_SOFT, k), 1, cv2.LINE_AA)
             mid = (rect[0] + rect[2]) // 2
             cy = (rect[1] + rect[3]) // 2
             tip_y = rect[1] + 6 if go_up else rect[3] - 6
-            color = AMBER_BRIGHT if hovered else _shade(AMBER_BRIGHT, k)
+            color = GRAY_BRIGHT if hovered else _shade(GRAY_BRIGHT, k)
             for dx in (-5, 5):
                 cv2.line(frame, (mid, tip_y), (mid + dx, cy), color, 2, cv2.LINE_AA)
 
@@ -440,7 +445,7 @@ class WindowRenderer:
     def _draw_footer(self, frame, win, layout, k, cursors):
         x0, y0, x1, y1 = layout.x0, layout.y0, layout.x1, layout.y1
         seam_y = y1 - 27
-        cv2.line(frame, (x0 + 10, seam_y), (x1 - 64, seam_y), _shade(CYAN_SOFT, k * 0.7), 1, cv2.LINE_AA)
+        cv2.line(frame, (x0 + 10, seam_y), (x1 - 64, seam_y), _shade(GRAY_SOFT, k * 0.7), 1, cv2.LINE_AA)
         cv2.line(frame, (x0 + 10, seam_y + 1), (x1 - 64, seam_y + 1), _shade(SHADOW, k), 1)
 
         baseline = y1 - 13
@@ -462,7 +467,7 @@ class WindowRenderer:
             last = min(win.scroll_offset + layout.visible_rows, total)
             label = f"LINES {first}-{last} / {total}"
         self._text(frame, label, (x0 + PAD, baseline), SMALL_SCALE,
-                   _shade(CYAN_SOFT, k), font=BODY_FONT)
+                   _shade(GRAY_SOFT, k), font=BODY_FONT)
 
     # ----------------------------------------------------------------- utils
     @staticmethod

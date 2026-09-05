@@ -22,10 +22,10 @@ MIDDLE_TIP_LANDMARK = 12
 PINCH_THRESHOLD_PX = 35.0
 CLAMP_THRESHOLD_PX = 32.0
 
-RETICLE_CYAN = (255, 240, 0)       # #00F0FF
-RETICLE_AMBER = (30, 176, 255)     # #FFB000
-RETICLE_GLOW = (120, 170, 255)     # soft cyan-white halo
-RETICLE_CORE = (250, 250, 255)
+RETICLE_CYAN = (252, 252, 250)      # ivory core
+RETICLE_AMBER = (202, 202, 198)     # soft silver when pinched
+RETICLE_GLOW = (150, 150, 150)      # soft gray-white halo
+RETICLE_CORE = (255, 255, 255)
 RETICLE_DISMISS = (60, 60, 255)    # hot red for dismiss-clamp
 
 
@@ -191,7 +191,7 @@ class Cursor:
             )
 
         if self.is_pinched:
-            self._glow(frame, (cx, cy), 34, (0, 40, 120), 0.45 + 0.15 * pulse)
+            self._glow(frame, (cx, cy), 34, (70, 70, 70), 0.45 + 0.15 * pulse)
             cv2.circle(frame, (cx, cy), 13, color, 3, cv2.LINE_AA)
             cv2.circle(frame, (cx, cy), 7, RETICLE_CORE, -1, cv2.LINE_AA)
         elif self.is_clamped:

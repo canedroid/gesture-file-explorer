@@ -16,6 +16,7 @@ from spatial_window import (
     SpatialWindow,
     clamp,
     compute_window_layout,
+    dotted_title,
     point_in_rect,
     row_rect,
     screen_index_for_y,
@@ -172,3 +173,17 @@ def test_wrap_text_line_keeps_short_line_whole():
 def test_wrap_lines_fits_card_width():
     result = wrap_lines(["alpha " * 40], DEFAULT_LIST_W)
     assert len(result) > 1
+
+
+def test_dotted_title_single_word():
+    assert dotted_title("ALFRED") == "A.L.F.R.E.D."
+
+
+def test_dotted_title_multi_word():
+    assert dotted_title("THIS PC") == "T.H.I.S.  P.C."
+
+
+def test_dotted_title_empty_and_short():
+    assert dotted_title("") == ""
+    assert dotted_title("X") == "X."
+    assert dotted_title("AB CD") == "A.B.  C.D."

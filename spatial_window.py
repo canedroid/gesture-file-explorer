@@ -43,6 +43,17 @@ def clamp(value, low, high):
     return max(low, min(high, value))
 
 
+def dotted_title(title):
+    """Render a title in the reference's dot-spaced logo treatment.
+
+    "ALFRED" -> "A.L.F.R.E.D."   "THIS PC" -> "T.H.I.S.  P.C."
+    """
+    words = str(title).split()
+    if not words:
+        return str(title)
+    return "  ".join(".".join(word) + "." for word in words)
+
+
 @dataclass
 class SpatialWindow:
     """An independent floating holographic window card."""
