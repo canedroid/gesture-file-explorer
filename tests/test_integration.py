@@ -72,6 +72,21 @@ def test_render_directory_card_draws_grayscale_seam():
     assert found
 
 
+def test_render_with_windows_peeking_off_frame_edges():
+    # Cards can be dragged to poke past the frame; blending must clip the
+    # shape to the viewport instead of crashing on unmatching masks.
+    manager = WindowManager()
+    manager.set_viewport(FRAME_W, FRAME_H)
+    win = manager.spawn_drives_card()
+    win.x = FRAME_W - 40
+    win.y = FRAME_H - 40
+    manager.spawn_assistant_card()
+    renderer = WindowRenderer()
+    frame = np.zeros((FRAME_H, FRAME_W, 3), dtype=np.uint8)
+    renderer.render(frame, manager, [])
+    assert frame[:].sum() > 0
+
+
 def test_rendered_accent_palette_is_grayscale():
     # The reference video's UI reads as translucent monochrome glass; the
     # chrome must contain almost no saturated cyan or amber pixels.

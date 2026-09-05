@@ -519,6 +519,11 @@ def _rounded_path(x0, y0, x1, y1, r, steps=ARC_STEPS):
 
 def _blend_gradient(frame, x0, y0, x1, y1, alpha):
     """Blend a vertical navy glass gradient over the card region."""
+    h_f, w_f = frame.shape[:2]
+    x0 = max(0, x0)
+    y0 = max(0, y0)
+    x1 = min(w_f, x1)
+    y1 = min(h_f, y1)
     h, w = y1 - y0, x1 - x0
     if h <= 0 or w <= 0:
         return
@@ -534,8 +539,17 @@ def _blend_gradient(frame, x0, y0, x1, y1, alpha):
 
 
 def _blend_shape(frame, rect, color, alpha, radius):
-    """Blend a translucent rounded-shape backing over a region."""
+    """Blend a translucent rounded-shape backing over a region.
+
+    The rect is clipped to the frame first so a card peeking past an edge
+    never leaves the roi and mask/overlay at different sizes.
+    """
+    h_f, w_f = frame.shape[:2]
     x0, y0, x1, y1 = rect
+    x0 = max(0, x0)
+    y0 = max(0, y0)
+    x1 = min(w_f, x1)
+    y1 = min(h_f, y1)
     h, w = y1 - y0, x1 - x0
     if h <= 0 or w <= 0:
         return
