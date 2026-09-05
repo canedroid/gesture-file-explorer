@@ -204,6 +204,16 @@ def test_assistant_about_row_opens_text_card():
     assert result["window"].title == "ABOUT ASSISTANT"
 
 
+def test_pinch_with_float_cursor_position_hits_row():
+    # Cursor positions arrive as floats (index.x * frame_width). Regression for
+    # "list indices must be integers or slices, not float" on every pinch.
+    manager = make_manager()
+    win = manager.spawn_drives_card()
+    cx, cy = row_point(manager.layout_for(win), 0)
+    result = manager.handle_pinch_start(win, float(cx) + 0.5, float(cy) + 0.5)
+    assert result["kind"] in ("opened_directory", "opened_file", "nothing")
+
+
 # ---------------------------------------------------------------- queries
 def test_topmost_at_and_focus():
     manager = make_manager()

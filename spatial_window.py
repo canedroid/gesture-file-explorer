@@ -162,7 +162,7 @@ def screen_index_for_y(layout, y):
     """Return the visible row index at a pixel offset, or None outside the list."""
     if y < layout.list_top:
         return None
-    index = (y - layout.list_top) // layout.row_height
+    index = int((y - layout.list_top) // layout.row_height)
     if index >= layout.visible_rows:
         return None
     return index

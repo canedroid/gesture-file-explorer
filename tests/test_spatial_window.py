@@ -136,6 +136,16 @@ def test_screen_index_for_y_respects_list_bounds():
     assert screen_index_for_y(layout, layout.y1 - 2) is None
 
 
+def test_screen_index_for_y_accepts_float_coordinates():
+    # The live pipeline hands float cursor positions to pinch handling;
+    # the row index must come out as an int so win.items[i] never sees a float.
+    win = make_window()
+    layout = compute_window_layout(win, FRAME_W, FRAME_H)
+    idx = screen_index_for_y(layout, float(layout.list_top + layout.row_height) + 0.5)
+    assert idx == 1
+    assert isinstance(idx, int)
+
+
 def test_layout_clamps_window_into_viewport():
     win = SpatialWindow(
         id=2,
