@@ -25,6 +25,7 @@ def main():
     labels = ["HAND-1", "HAND-2"]
 
     manager.spawn_drives_card()
+    manager.spawn_assistant_card()
 
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
 

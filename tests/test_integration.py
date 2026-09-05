@@ -45,11 +45,12 @@ def test_blank_frames_keep_pipeline_stable(tmp_path):
     manager.set_viewport(FRAME_W, FRAME_H)
     renderer = WindowRenderer()
     manager.spawn_drives_card()
+    manager.spawn_assistant_card()
     frame = np.zeros((FRAME_H, FRAME_W, 3), dtype=np.uint8)
     try:
         for _ in range(3):
             run_blank_pipeline(tracker, cursors, frame, manager, renderer)
-        assert len(manager.active_windows) >= 1
+        assert len(manager.active_windows) >= 2
         assert frame.sum() > 0
     finally:
         tracker.close()

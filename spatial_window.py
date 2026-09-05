@@ -38,6 +38,10 @@ DEFAULT_LIST_H = 450
 DEFAULT_TEXT_W = 700
 DEFAULT_TEXT_H = 450
 
+ALFRED_TITLE = "ALFRED"
+ALFRED_W = 600
+ALFRED_H = 520
+
 
 def clamp(value, low, high):
     return max(low, min(high, value))

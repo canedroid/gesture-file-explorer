@@ -5,6 +5,8 @@ import pytest
 
 from file_engine import FileEntry
 from spatial_window import (
+    ALFRED_H,
+    ALFRED_W,
     CONTENT_DIRECTORY,
     CONTENT_TEXT,
     MAX_H,
@@ -18,7 +20,12 @@ from spatial_window import (
     SpatialWindow,
     row_rect,
 )
-from window_manager import WindowManager
+from window_manager import (
+    ASSISTANT_ABOUT,
+    ASSISTANT_DRIVES,
+    ASSISTANT_HELP,
+    WindowManager,
+)
 
 FRAME_W, FRAME_H = 960, 720
 
@@ -148,6 +155,53 @@ def _overlap(a, b):
         or a.y + a.height <= b.y
         or b.y + b.height <= a.y
     )
+
+
+# ------------------------------------------------------------ ALFRED panel
+def test_spawn_assistant_card_centered_with_sections():
+    manager = make_manager()
+    win = manager.spawn_assistant_card()
+    assert win.title == "ALFRED"
+    assert win.x == (FRAME_W - ALFRED_W) // 2
+    assert win.y == (FRAME_H - ALFRED_H) // 2
+    assert [i.name for i in win.items] == ["GETTING STARTED", "DRIVES", "ABOUT"]
+
+
+def test_assistant_drives_row_focuses_or_opens_drives_card():
+    manager = make_manager()
+    alfred = manager.spawn_assistant_card()
+    cx, cy = row_point(manager.layout_for(alfred), 1)
+    result = manager.handle_pinch_start(alfred, cx, cy)
+    assert result["kind"] == "assistant_action"
+    assert result["action"] == ASSISTANT_DRIVES
+    assert len([w for w in manager.windows if w.path == ""]) == 1
+    # Pinching again focuses the existing drives card, no duplicate.
+    manager.handle_pinch_start(alfred, cx, cy)
+    assert len([w for w in manager.windows if w.path == ""]) == 1
+    assert manager.windows[-1].path == ""
+
+
+def test_assistant_help_row_opens_text_card():
+    manager = make_manager()
+    alfred = manager.spawn_assistant_card()
+    cx, cy = row_point(manager.layout_for(alfred), 0)
+    result = manager.handle_pinch_start(alfred, cx, cy)
+    assert result["kind"] == "assistant_action"
+    assert result["action"] == ASSISTANT_HELP
+    child = result["window"]
+    assert child is not None
+    assert child.content_type == CONTENT_TEXT
+    assert child.title == "GETTING STARTED"
+
+
+def test_assistant_about_row_opens_text_card():
+    manager = make_manager()
+    alfred = manager.spawn_assistant_card()
+    cx, cy = row_point(manager.layout_for(alfred), 2)
+    result = manager.handle_pinch_start(alfred, cx, cy)
+    assert result["kind"] == "assistant_action"
+    assert result["action"] == ASSISTANT_ABOUT
+    assert result["window"].title == "ABOUT ASSISTANT"
 
 
 # ---------------------------------------------------------------- queries

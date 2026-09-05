@@ -10,6 +10,9 @@ import os
 
 from file_engine import FileEntry, get_drives, read_text_file, scan_directory
 from spatial_window import (
+    ALFRED_H,
+    ALFRED_TITLE,
+    ALFRED_W,
     CONTENT_DIRECTORY,
     CONTENT_TEXT,
     DEFAULT_LIST_H,
@@ -35,6 +38,35 @@ MAX_CASCADE = 6
 FLICK_CLOSE_THRESHOLD = 16.0
 DRAG_LERP = 0.5
 CLOSE_VELOCITY_DAMPING = 0.94
+
+ASSISTANT_DRIVES = "assistant://drives"
+ASSISTANT_HELP = "assistant://help"
+ASSISTANT_ABOUT = "assistant://about"
+
+ASSISTANT_HELP_LINES = [
+    "# GETTING STARTED",
+    "",
+    "1. Raise a hand in front of the camera.",
+    "2. Point your index finger to move the cursor.",
+    "3. Pinch index + thumb to click a row or button.",
+    "4. Pinch a window title bar and move to drag it.",
+    "5. Two-handed pinch on a window grows or shrinks it.",
+    "6. Press and hold thumb + middle to dismiss a window.",
+    "7. Flick a window hard on release to throw it away.",
+    "",
+    "ENJOY YOUR HOLOGRAPHIC FILES.",
+]
+
+ASSISTANT_ABOUT_LINES = [
+    "# ALFRED ASSISTANT",
+    "",
+    "A gesture-controlled spatial HUD for your files.",
+    "",
+    "Runs on MediaPipe hand tracking and OpenCV.",
+    "Two virtual cursors and floating glass cards.",
+    "",
+    "INSPIRED BY JARVIS-STYLE AI INTERFACES.",
+]
 
 
 def _entry_from_drive(drive):
@@ -73,6 +105,71 @@ class WindowManager:
         )
         self._next_id += 1
         self._clamp_position(win)
+        self.windows.append(win)
+        return win
+
+    def spawn_assistant_card(self):
+        """Open the centered ALFRED assistant panel with section rows."""
+        win = SpatialWindow(
+            id=self._next_id,
+            title=ALFRED_TITLE,
+            path="assistant://",
+            x=(self.frame_w - ALFRED_W) // 2,
+            y=(self.frame_h - ALFRED_H) // 2,
+            width=ALFRED_W,
+            height=ALFRED_H,
+            content_type=CONTENT_DIRECTORY,
+            items=[
+                FileEntry(
+                    name="GETTING STARTED",
+                    path=ASSISTANT_HELP,
+                    is_dir=False,
+                ),
+                FileEntry(name="DRIVES", path=ASSISTANT_DRIVES, is_dir=True),
+                FileEntry(name="ABOUT", path=ASSISTANT_ABOUT, is_dir=False),
+            ],
+        )
+        self._next_id += 1
+        self._clamp_position(win)
+        self.windows.append(win)
+        return win
+
+    def open_assistant(self, action, parent=None):
+        """Resolve an ALFRED section row into a card or a focus change.
+
+        Returns the resulting window (or an existing card that was focused).
+        """
+        if action == ASSISTANT_DRIVES:
+            existing = next(
+                (w for w in self.windows if w.path == "" and w.state != STATE_CLOSING),
+                None,
+            )
+            if existing is not None:
+                self.focus(existing)
+                return existing
+            child = self.spawn_drives_card()
+            self.focus(child)
+            return child
+        if action == ASSISTANT_HELP:
+            title, lines = "GETTING STARTED", ASSISTANT_HELP_LINES
+        elif action == ASSISTANT_ABOUT:
+            title, lines = "ABOUT ASSISTANT", ASSISTANT_ABOUT_LINES
+        else:
+            return None
+        parent = parent or (self.windows[-1] if self.windows else None)
+        win = SpatialWindow(
+            id=self._next_id,
+            title=title,
+            path=action,
+            x=parent.x + (parent.width - DEFAULT_TEXT_W) // 2 if parent else 200,
+            y=parent.y + (parent.height - DEFAULT_TEXT_H) // 2 if parent else 140,
+            width=DEFAULT_TEXT_W,
+            height=DEFAULT_TEXT_H,
+            content_type=CONTENT_TEXT,
+            items=lines,
+        )
+        self._next_id += 1
+        self._cascade_spawn(win)
         self.windows.append(win)
         return win
 
@@ -305,6 +402,9 @@ class WindowManager:
 
         if win.content_type == CONTENT_TEXT:
             return {"kind": "text_line"}
+        if item.path.startswith("assistant://"):
+            child = self.open_assistant(item.path, win)
+            return {"kind": "assistant_action", "action": item.path, "window": child}
         if not item.is_dir:
             child = self.spawn_text_card(win, item)
             self.focus(child)
