@@ -16,6 +16,10 @@ from spatial_window import (
     DEFAULT_LIST_W,
     DEFAULT_TEXT_H,
     DEFAULT_TEXT_W,
+    MAX_H,
+    MAX_W,
+    MIN_H,
+    MIN_W,
     STATE_CLOSING,
     STATE_DRAGGING,
     STATE_OPEN,
@@ -31,7 +35,6 @@ MAX_CASCADE = 6
 FLICK_CLOSE_THRESHOLD = 16.0
 DRAG_LERP = 0.5
 CLOSE_VELOCITY_DAMPING = 0.94
-MIN_W, MIN_H, MAX_W, MAX_H = 220, 210, 720, 680
 
 
 def _entry_from_drive(drive):
@@ -133,17 +136,34 @@ class WindowManager:
 
     def _cascade_spawn(self, win):
         step = 0
-        while (
-            step < MAX_CASCADE
-            and any(
-                w.state != STATE_CLOSING and _overlaps(w, win)
-                for w in self.windows
-            )
-        ):
-            win.x += 60
-            win.y += 60
+        while step < MAX_CASCADE and self._any_overlap(win):
+            win.x += 40
+            win.y += 40
             step += 1
+            self._clamp_position(win)
+        if self._any_overlap(win):
+            self._relocate_free(win)
         self._clamp_position(win)
+
+    def _any_overlap(self, win):
+        return any(
+            w.state != STATE_CLOSING and _overlaps(w, win)
+            for w in self.windows
+        )
+
+    def _relocate_free(self, win):
+        """Try a light grid scan for the first non-overlapping placement."""
+        step = 20
+        for gy in range(10, max(11, self.frame_h - win.height + 1), step):
+            for gx in range(10, max(11, self.frame_w - win.width + 1), step):
+                probe = (gx, gy, gx + win.width, gy + win.height)
+                if any(
+                    w.state != STATE_CLOSING and _rect_hit(w, probe)
+                    for w in self.windows
+                ):
+                    continue
+                win.x, win.y = gx, gy
+                return
 
     def _clamp_position(self, win):
         win.x = clamp(win.x, 0, max(0, self.frame_w - win.width))
@@ -305,6 +325,15 @@ def _overlaps(a, b):
         or b.x + b.width <= a.x
         or a.y + a.height <= b.y
         or b.y + b.height <= a.y
+    )
+
+
+def _rect_hit(win, rect):
+    return not (
+        win.x + win.width <= rect[0]
+        or rect[2] <= win.x
+        or win.y + win.height <= rect[1]
+        or rect[3] <= win.y
     )
 
 

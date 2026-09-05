@@ -7,6 +7,9 @@ from file_engine import FileEntry
 from spatial_window import (
     CONTENT_DIRECTORY,
     CONTENT_TEXT,
+    MAX_H,
+    MAX_W,
+    TITLE_BAR_H,
     DEFAULT_LIST_H,
     DEFAULT_LIST_W,
     DEFAULT_TEXT_W,
@@ -123,6 +126,8 @@ def test_spawn_with_permission_error_sets_message(tmp_path, monkeypatch):
 
 def test_new_card_cascades_away_from_overlap(tmp_path):
     manager = make_manager()
+    # Viewport large enough to hold two wide cards next to each other.
+    manager.set_viewport(1600, 1000)
     docs = tmp_path / "docs"
     docs.mkdir()
     first = manager.spawn_drives_card()
@@ -131,23 +136,9 @@ def test_new_card_cascades_away_from_overlap(tmp_path):
     parent = first
     entry = file_entry("docs", str(docs), True)
     # A sibling spawned at the same spot must be nudged aside.
-    from spatial_window import DEFAULT_LIST_W as W, DEFAULT_LIST_H as H
-
-    before = SpatialWindow(
-        id=900,
-        title="B",
-        path="",
-        x=parent.x,
-        y=parent.y,
-        width=W,
-        height=H,
-        content_type=CONTENT_DIRECTORY,
-        items=[],
-    )
-    manager.windows.append(before)
     second = manager.spawn_directory_card(parent, entry)
     assert second.state != STATE_CLOSING
-    assert not _overlap(second, before)
+    assert not _overlap(second, first)
 
 
 def _overlap(a, b):
@@ -291,7 +282,11 @@ def test_pinch_above_list_does_nothing(tmp_path):
     manager = make_manager()
     win = manager.spawn_drives_card()
     layout = manager.layout_for(win)
-    result = manager.handle_pinch_start(win, layout.x0 + 40, layout.y0 + 40)
+    # Between the title seam and the first list row: inside the panel, above
+    # the list, below the drag bar.
+    click_y = layout.y0 + TITLE_BAR_H + 4
+    assert click_y < layout.list_top
+    result = manager.handle_pinch_start(win, layout.x0 + 40, click_y)
     assert result["kind"] == "nothing"
 
 
@@ -348,8 +343,8 @@ def test_two_hand_resize_grows_and_clamps_window():
     manager.apply_resize(win, *wide1, *wide2)
     assert win.width > base_w
     assert win.height > base_h
-    assert win.width <= 720
-    assert win.height <= 680
+    assert win.width <= MAX_W
+    assert win.height <= MAX_H
     manager.end_all_resizes()
     assert not manager.is_resizing(win)
 

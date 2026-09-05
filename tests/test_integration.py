@@ -9,7 +9,12 @@ import numpy as np
 
 from gesture_control import Cursor
 from hand_tracker import HandTracker
-from spatial_window import CONTENT_DIRECTORY, STATE_CLOSING, row_rect
+from spatial_window import (
+    CONTENT_DIRECTORY,
+    STATE_CLOSING,
+    TITLE_BAR_H,
+    row_rect,
+)
 from window_manager import WindowManager
 from window_renderer import WindowRenderer
 
@@ -58,7 +63,7 @@ def test_render_directory_card_draws_cyan_seam():
     frame = np.zeros((FRAME_H, FRAME_W, 3), dtype=np.uint8)
     renderer.render(frame, manager, [])
     layout = manager.layout_for(win)
-    seam_y = layout.y0 + 32 - 6
+    seam_y = layout.y0 + TITLE_BAR_H - 4
     found = any(
         frame[seam_y, x][2] > 200 and frame[seam_y, x][1] > 100
         for x in range(layout.x0 + 12, layout.x1 - 12, 3)

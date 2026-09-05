@@ -18,22 +18,22 @@ STATE_OPEN = "open"
 STATE_DRAGGING = "dragging"
 STATE_CLOSING = "closing"
 
-TITLE_BAR_H = 32
-CLOSE_BTN_W = 22
-CLOSE_BTN_MARGIN = 6
-PAD = 8
-ROW_H = 26
-LIST_TOP_OFFSET = TITLE_BAR_H + 12
-FOOTER_H = 36
-PAGER_H = 22
+TITLE_BAR_H = 46
+CLOSE_BTN_W = 26
+CLOSE_BTN_MARGIN = 10
+PAD = 14
+ROW_H = 34
+LIST_TOP_OFFSET = TITLE_BAR_H + 14
+FOOTER_H = 40
+PAGER_H = 24
 
-MIN_W, MAX_W = 220, 720
-MIN_H, MAX_H = 210, 680
+MIN_W, MAX_W = 600, 1180
+MIN_H, MAX_H = 400, 840
 
-DEFAULT_LIST_W = 360
-DEFAULT_LIST_H = 470
-DEFAULT_TEXT_W = 440
-DEFAULT_TEXT_H = 520
+DEFAULT_LIST_W = 700
+DEFAULT_LIST_H = 450
+DEFAULT_TEXT_W = 700
+DEFAULT_TEXT_H = 450
 
 
 def clamp(value, low, high):
@@ -49,9 +49,9 @@ class SpatialWindow:
     path: str
     x: int
     y: int
-    width: int
-    height: int
-    content_type: str
+    width: int = DEFAULT_LIST_W
+    height: int = DEFAULT_LIST_H
+    content_type: str = CONTENT_DIRECTORY
     items: list = field(default_factory=list)
     message: str = ""
     fade: float = 1.0
@@ -59,6 +59,10 @@ class SpatialWindow:
     scroll_offset: int = 0
     velocity_x: float = 0.0
     velocity_y: float = 0.0
+
+    def __post_init__(self):
+        self.width = clamp(self.width, MIN_W, MAX_W)
+        self.height = clamp(self.height, MIN_H, MAX_H)
 
     def contains(self, px, py):
         return self.x <= px <= self.x + self.width and self.y <= py <= self.y + self.height
@@ -91,25 +95,25 @@ def compute_window_layout(win, frame_w, frame_h):
     title_bar = (x0, y0, x1, y0 + TITLE_BAR_H)
     close_button = (
         x1 - CLOSE_BTN_W - CLOSE_BTN_MARGIN,
-        y0 + 4,
+        y0 + 9,
         x1 - CLOSE_BTN_MARGIN,
-        y0 + TITLE_BAR_H - 4,
+        y0 + TITLE_BAR_H - 9,
     )
     list_left = x0 + PAD
     list_right = x1 - PAD
     list_top = y0 + LIST_TOP_OFFSET
-    avail = max(40, (y1 - y0) - LIST_TOP_OFFSET - FOOTER_H)
+    avail = max(ROW_H * 2, (y1 - y0) - LIST_TOP_OFFSET - FOOTER_H)
     visible_rows = max(1, avail // ROW_H)
     pager_up = (
-        x1 - 30,
-        y1 - PAGER_H - 28,
-        x1 - 6,
-        y1 - PAGER_H - 6,
+        x1 - 52,
+        y1 - FOOTER_H + 4,
+        x1 - 24,
+        y1 - PAGER_H - 2,
     )
     pager_down = (
-        x1 - 30,
-        y1 - PAGER_H - 2,
-        x1 - 6,
+        x1 - 52,
+        y1 - PAGER_H,
+        x1 - 24,
         y1 - 2,
     )
     return LayoutInfo(
@@ -132,7 +136,7 @@ def compute_window_layout(win, frame_w, frame_h):
 def row_rect(layout, screen_index):
     """Screen-space rectangle of list row ``screen_index`` (0-based)."""
     top = layout.list_top + screen_index * layout.row_height
-    bottom = top + layout.row_height - 4
+    bottom = top + layout.row_height - 6
     return (layout.list_left, top, layout.list_right, bottom)
 
 
@@ -180,7 +184,7 @@ def wrap_text_line(text, max_px, font, scale, thickness):
 
 def wrap_lines(lines, card_width):
     """Wrap document lines to fit a floating card's content width."""
-    max_px = max(60, card_width - PAD * 2 - 10)
+    max_px = max(80, card_width - PAD * 2 - 16)
     font = cv2.FONT_HERSHEY_SIMPLEX
     wrapped = []
     for raw in lines:
